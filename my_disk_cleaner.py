@@ -114,6 +114,7 @@ class DiskCleanerApp(tk.Tk):
         self.loading = False
         self.create_widgets()
         self.refresh_initial_dirs()
+        self.update_breadcrumbs()
 
     def create_widgets(self):
         # Frame for displaying breadcrumb navigation
@@ -249,22 +250,33 @@ class DiskCleanerApp(tk.Tk):
         for widget in self.breadcrumb_frame.winfo_children():
             widget.destroy()
         if self.selected_dir is None:
-            # Initial directories list view
+            # Initial directories list view label
             lbl = tk.Label(self.breadcrumb_frame, text="Initial Directories", relief=tk.FLAT)
             lbl.pack(side='left')
             return
+        else:
+            # Initial directories list view button
+            btn = tk.Button(self.breadcrumb_frame, text="Initial Directories", relief=tk.FLAT, command=self.refresh_initial_dirs)
+            btn.pack(side='left')
+            sep = tk.Label(self.breadcrumb_frame, text=" > ")
+            sep.pack(side='left')
         home_dir = os.path.expanduser('~')
         # Breadcrumb navigation
         parts = []
         path = self.selected_dir
+        for initial in (MAC_INITIAL_DIRS if is_mac() else WINDOWS_INITIAL_DIRS):
+            if path == initial or path.startswith(initial + os.sep):
+                parts.append((initial, initial))
+                path = path[len(initial):].lstrip(os.sep)
+                break
         while True:
             head, tail = os.path.split(path)
             if tail:
-                parts.insert(0, (tail, path))
+                parts.insert(1, (tail, path))
                 path = head
             else:
                 if head:
-                    parts.insert(0, (head, head))
+                    parts.insert(1, (head, head))
                 break
         # Shorten display using "~" for home directory
         def short_path(p):
