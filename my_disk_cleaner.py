@@ -107,6 +107,10 @@ class DiskCleanerApp(tk.Tk):
         self.dir_combo.pack(anchor='nw', padx=10, pady=5)
         self.dir_combo.bind("<<ComboboxSelected>>", self.on_dir_selected)
 
+        # Frame for displaying breadcrumb navigation
+        self.breadcrumb_frame = tk.Frame(self)
+        self.breadcrumb_frame.pack(anchor='nw', fill='x', padx=10, pady=5)
+
         # Directory size display
         self.size_label = tk.Label(self, text="Directory size: ")
         self.size_label.pack(anchor='nw', padx=10, pady=5)
@@ -144,6 +148,7 @@ class DiskCleanerApp(tk.Tk):
         dir_path = self.dir_combo.get()
         self.selected_dir = dir_path
         self.start_refresh_dir_view()
+        self.update_breadcrumbs()
 
     def start_refresh_dir_view(self):
         if self.loading:
@@ -208,6 +213,7 @@ class DiskCleanerApp(tk.Tk):
         if entry and entry['is_dir']:
             self.selected_dir = entry['path']
             self.start_refresh_dir_view()
+            self.update_breadcrumbs()
 
     def on_delete(self):
         selected = self.tree.selection()
@@ -222,6 +228,55 @@ class DiskCleanerApp(tk.Tk):
         elif is_windows():
             delete_windows_items(selected)
         self.start_refresh_dir_view()
+
+    def update_breadcrumbs(self):
+        # Update breadcrumb navigation display
+        for widget in self.breadcrumb_frame.winfo_children():
+            widget.destroy()
+        if not self.selected_dir:
+            return
+        # Get initial directory
+        initial_dir = self.dir_combo.get()
+        home_dir = os.path.expanduser('~')
+        # Generate breadcrumb navigation (do not display above initial directory)
+        parts = []
+        path = self.selected_dir
+        while True:
+            if path == initial_dir or os.path.normpath(path) == os.path.normpath(initial_dir):
+                parts.insert(0, (initial_dir, initial_dir))
+                break
+            head, tail = os.path.split(path)
+            if tail:
+                parts.insert(0, (tail, path))
+                path = head
+            else:
+                if head:
+                    parts.insert(0, (head, head))
+                break
+        # Shorten display using "~" for home directory
+        def short_path(p):
+            if p.startswith(home_dir):
+                return p.replace(home_dir, "~", 1)
+            return p
+        # The last item is a Label (not selectable), others are buttons
+        for i, (name, full_path) in enumerate(parts):
+            display_name = short_path(name) if i > 0 else short_path(name)
+            if i == len(parts) - 1:
+                lbl = tk.Label(self.breadcrumb_frame, text=display_name, relief=tk.FLAT)
+                lbl.pack(side='left')
+            else:
+                btn = tk.Button(self.breadcrumb_frame, text=display_name, relief=tk.FLAT, command=lambda p=full_path: self.on_breadcrumb_click(p))
+                btn.pack(side='left')
+            if i < len(parts) - 1:
+                sep = tk.Label(self.breadcrumb_frame, text=" > ")
+                sep.pack(side='left')
+
+    def on_breadcrumb_click(self, path):
+        # Navigate to the directory when breadcrumb is clicked
+        if path != self.selected_dir:
+            self.selected_dir = path
+            self.start_refresh_dir_view()
+            self.update_breadcrumbs()
 
 if __name__ == "__main__":
     app = DiskCleanerApp()
