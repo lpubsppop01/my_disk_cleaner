@@ -13,12 +13,12 @@ MAC_INITIAL_DIRS = [
 ]
 
 WINDOWS_INITIAL_DIRS = [
-    "C:\Windows\Temp",
-    "C:\ProgramData",
-    "C:\System Volume Information",
-    "C:\Windows\SoftwareDistribution\Download",
-    "C:\Cygwin64\var\cache\setup",
-    os.path.expanduser('~\\AppData\\Local\\Temp'),
+    r"C:\Windows\Temp",
+    r"C:\ProgramData",
+    r"C:\System Volume Information",
+    r"C:\Windows\SoftwareDistribution\Download",
+    r"C:\Cygwin64\var\cache\setup",
+    os.path.expanduser(r'~\AppData\Local\Temp'),
     os.path.expanduser('~\\AppData\\Local\\Packages'),
     os.path.expanduser('~\\AppData\\Local\\pip\\Cache'),
     os.path.expanduser('~\\AppData\\Local\\npm-cache'),
@@ -116,14 +116,6 @@ class DiskCleanerApp(tk.Tk):
         self.refresh_initial_dirs()
 
     def create_widgets(self):
-        # Initial candidate directory selection
-        self.dir_label = tk.Label(self, text="Initial candidate directories:")
-        self.dir_label.pack(anchor='nw', padx=10, pady=5)
-
-        self.dir_combo = ttk.Combobox(self, state="readonly")
-        self.dir_combo.pack(anchor='nw', padx=10, pady=5)
-        self.dir_combo.bind("<<ComboboxSelected>>", self.on_dir_selected)
-
         # Frame for displaying breadcrumb navigation
         self.breadcrumb_frame = tk.Frame(self)
         self.breadcrumb_frame.pack(anchor='nw', fill='x', padx=10, pady=5)
@@ -156,10 +148,25 @@ class DiskCleanerApp(tk.Tk):
             dirs = WINDOWS_INITIAL_DIRS
         else:
             dirs = []
-        self.dir_combo['values'] = dirs
-        if dirs:
-            self.dir_combo.current(0)
-            self.on_dir_selected()
+        self.selected_dir = None
+        self.dir_entries = []
+        self.tree.delete(*self.tree.get_children())
+        for dir_path in dirs:
+            # Get directory size (if slow, use 0 or "-")
+            try:
+                size = get_dir_size(dir_path)
+            except Exception:
+                size = 0
+            self.dir_entries.append({
+                'name': dir_path,
+                'path': dir_path,
+                'is_dir': True,
+                'size': size
+            })
+            self.tree.insert("", "end", iid=dir_path, text=dir_path, values=(size,), tags=("dir",))
+        self.size_label.config(text="Directory size: -")
+        self.loading_label.config(text="")
+        self.delete_btn.config(state="disabled")
 
     def on_dir_selected(self, event=None):
         dir_path = self.dir_combo.get()
@@ -241,18 +248,16 @@ class DiskCleanerApp(tk.Tk):
         # Update breadcrumb navigation display
         for widget in self.breadcrumb_frame.winfo_children():
             widget.destroy()
-        if not self.selected_dir:
+        if self.selected_dir is None:
+            # Initial directories list view
+            lbl = tk.Label(self.breadcrumb_frame, text="Initial Directories", relief=tk.FLAT)
+            lbl.pack(side='left')
             return
-        # Get initial directory
-        initial_dir = self.dir_combo.get()
         home_dir = os.path.expanduser('~')
-        # Generate breadcrumb navigation (do not display above initial directory)
+        # Breadcrumb navigation
         parts = []
         path = self.selected_dir
         while True:
-            if path == initial_dir or os.path.normpath(path) == os.path.normpath(initial_dir):
-                parts.insert(0, (initial_dir, initial_dir))
-                break
             head, tail = os.path.split(path)
             if tail:
                 parts.insert(0, (tail, path))
@@ -268,7 +273,7 @@ class DiskCleanerApp(tk.Tk):
             return p
         # The last item is a Label (not selectable), others are buttons
         for i, (name, full_path) in enumerate(parts):
-            display_name = short_path(name) if i > 0 else short_path(name)
+            display_name = short_path(name)
             if i == len(parts) - 1:
                 lbl = tk.Label(self.breadcrumb_frame, text=display_name, relief=tk.FLAT)
                 lbl.pack(side='left')
