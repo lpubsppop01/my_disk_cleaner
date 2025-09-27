@@ -40,6 +40,9 @@ def get_dir_size(path):
         for f in files:
             try:
                 fp = os.path.join(root, f)
+                # Exclude symbolic links from size calculation
+                if os.path.islink(fp):
+                    continue
                 total += os.path.getsize(fp)
             except Exception:
                 pass
@@ -91,6 +94,7 @@ class DiskCleanerApp(tk.Tk):
         self.selected_dir = None
         self.dir_entries = []
         self.selected_items = set()
+        self.loading = False
         self.create_widgets()
         self.refresh_initial_dirs()
 
@@ -106,6 +110,10 @@ class DiskCleanerApp(tk.Tk):
         # Directory size display
         self.size_label = tk.Label(self, text="Directory size: ")
         self.size_label.pack(anchor='nw', padx=10, pady=5)
+
+        # Loading indicator
+        self.loading_label = tk.Label(self, text="", fg="blue")
+        self.loading_label.pack(anchor='nw', padx=10, pady=5)
 
         # File/Directory list
         self.tree = ttk.Treeview(self, columns=("size",), selectmode="extended")
@@ -135,28 +143,62 @@ class DiskCleanerApp(tk.Tk):
     def on_dir_selected(self, event=None):
         dir_path = self.dir_combo.get()
         self.selected_dir = dir_path
-        self.refresh_dir_view()
+        self.start_refresh_dir_view()
 
-    def refresh_dir_view(self):
+    def start_refresh_dir_view(self):
+        if self.loading:
+            return  # Prevent double loading
+        self.loading = True
+        self.loading_label.config(text="Loading...")
+        self.delete_btn.config(state="disabled")
         self.tree.delete(*self.tree.get_children())
-        if not self.selected_dir:
-            self.size_label.config(text="Directory size: -")
-            return
-        if is_mac():
-            size = get_dir_size(self.selected_dir)
-            self.size_label.config(text=f"Directory size: {size:,} bytes")
-            entries = list_dir(self.selected_dir)
-        elif is_windows():
-            size = get_windows_dir_size(self.selected_dir)
-            self.size_label.config(text=f"Directory size: {size:,} bytes")
-            entries = list_windows_dir(self.selected_dir)
-        else:
-            self.size_label.config(text="Directory size: -")
+        # multiprocessing: start process and poll queue
+        import multiprocessing
+        self._mp_queue = multiprocessing.Queue()
+        p = multiprocessing.Process(target=DiskCleanerApp._refresh_dir_view_process, args=(self.selected_dir, self._mp_queue))
+        p.start()
+        self._mp_process = p
+        self.after(100, self._poll_mp_queue)
+
+    @staticmethod
+    def _refresh_dir_view_process(selected_dir, queue):
+        if not selected_dir:
+            size = "-"
             entries = []
+        elif is_mac():
+            size = get_dir_size(selected_dir)
+            entries = list_dir(selected_dir)
+        elif is_windows():
+            size = get_windows_dir_size(selected_dir)
+            entries = list_windows_dir(selected_dir)
+        else:
+            size = "-"
+            entries = []
+        queue.put((size, entries))
+
+    def _update_dir_view_ui(self, size, entries):
+        self.size_label.config(text=f"Directory size: {size if isinstance(size, str) else f'{size:,} bytes'}")
         self.dir_entries = entries
         for entry in entries:
             tag = "dir" if entry['is_dir'] else "file"
             self.tree.insert("", "end", iid=entry['path'], text=entry['name'], values=(entry['size'],), tags=(tag,))
+        self.loading_label.config(text="")
+        self.delete_btn.config(state="normal")
+        self.loading = False
+
+    def _poll_mp_queue(self):
+        if hasattr(self, "_mp_queue"):
+            try:
+                size, entries = self._mp_queue.get_nowait()
+                self._update_dir_view_ui(size, entries)
+                # Process termination handling
+                if hasattr(self, "_mp_process"):
+                    self._mp_process.join(timeout=0.1)
+                    del self._mp_process
+                del self._mp_queue
+            except Exception:
+                # If the queue is empty, call again with after
+                self.after(100, self._poll_mp_queue)
 
     def on_tree_double_click(self, event):
         item_id = self.tree.focus()
@@ -165,7 +207,7 @@ class DiskCleanerApp(tk.Tk):
         entry = next((e for e in self.dir_entries if e['path'] == item_id), None)
         if entry and entry['is_dir']:
             self.selected_dir = entry['path']
-            self.refresh_dir_view()
+            self.start_refresh_dir_view()
 
     def on_delete(self):
         selected = self.tree.selection()
@@ -179,7 +221,7 @@ class DiskCleanerApp(tk.Tk):
             delete_items(selected)
         elif is_windows():
             delete_windows_items(selected)
-        self.refresh_dir_view()
+        self.start_refresh_dir_view()
 
 if __name__ == "__main__":
     app = DiskCleanerApp()
