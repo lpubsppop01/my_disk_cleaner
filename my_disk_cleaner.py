@@ -12,7 +12,21 @@ MAC_INITIAL_DIRS = [
     os.path.expanduser('~/Library/Containers'),
 ]
 
-WINDOWS_INITIAL_DIR = os.path.expanduser('~\\AppData\\Local')
+WINDOWS_INITIAL_DIRS = [
+    "C:\Windows\Temp",
+    "C:\ProgramData",
+    "C:\System Volume Information",
+    "C:\Windows\SoftwareDistribution\Download",
+    "C:\Cygwin64\var\cache\setup",
+    os.path.expanduser('~\\AppData\\Local\\Temp'),
+    os.path.expanduser('~\\AppData\\Local\\Packages'),
+    os.path.expanduser('~\\AppData\\Local\\pip\\Cache'),
+    os.path.expanduser('~\\AppData\\Local\\npm-cache'),
+    os.path.expanduser('~\\AppData\\Roaming\\Code\\Cache'),
+    os.path.expanduser('~\\AppData\\Roaming\\Code\\Backups'),
+    os.path.expanduser('~\\AppData\\Local\\BraveSoftware\\Brave-Browser\\User Data\\Default\\Cache'),
+    os.path.expanduser('~\\.ollama'),
+]
 
 def is_mac():
     return sys.platform == 'darwin'
@@ -20,18 +34,19 @@ def is_mac():
 def is_windows():
     return sys.platform.startswith('win')
 
-# Stub functions for Windows
-def get_windows_dir_size(path):
-    # Dummy for hard link handling
-    return 0
-
-def list_windows_dir(path):
-    # Dummy
-    return []
-
-def delete_windows_items(items):
-    # Dummy
-    pass
+def is_windows_hardlink(path) -> bool:
+    # Check if a file is a hard link on Windows
+    if not os.path.exists(path):
+        return False
+    try:
+        import ctypes
+        FILE_ATTRIBUTE_REPARSE_POINT = 0x0400
+        attrs = ctypes.windll.kernel32.GetFileAttributesW(str(path))
+        if attrs == -1:
+            return False
+        return bool(attrs & FILE_ATTRIBUTE_REPARSE_POINT)
+    except Exception:
+        return False
 
 # Directory size calculation for Mac
 def get_dir_size(path):
@@ -41,7 +56,7 @@ def get_dir_size(path):
             try:
                 fp = os.path.join(root, f)
                 # Exclude symbolic links from size calculation
-                if os.path.islink(fp):
+                if os.path.islink(fp) or is_windows_hardlink(fp):
                     continue
                 total += os.path.getsize(fp)
             except Exception:
@@ -54,6 +69,8 @@ def list_dir(path):
         entries = []
         with os.scandir(path) as it:
             for entry in it:
+                if os.path.islink(entry.path) or is_windows_hardlink(entry.path):
+                    continue
                 size = 0
                 if entry.is_file():
                     try:
@@ -136,7 +153,7 @@ class DiskCleanerApp(tk.Tk):
         if is_mac():
             dirs = MAC_INITIAL_DIRS
         elif is_windows():
-            dirs = [WINDOWS_INITIAL_DIR]
+            dirs = WINDOWS_INITIAL_DIRS
         else:
             dirs = []
         self.dir_combo['values'] = dirs
@@ -170,15 +187,9 @@ class DiskCleanerApp(tk.Tk):
         if not selected_dir:
             size = "-"
             entries = []
-        elif is_mac():
+        else:
             size = get_dir_size(selected_dir)
             entries = list_dir(selected_dir)
-        elif is_windows():
-            size = get_windows_dir_size(selected_dir)
-            entries = list_windows_dir(selected_dir)
-        else:
-            size = "-"
-            entries = []
         queue.put((size, entries))
 
     def _update_dir_view_ui(self, size, entries):
@@ -223,10 +234,7 @@ class DiskCleanerApp(tk.Tk):
         confirm = messagebox.askyesno("Confirm", "Are you sure you want to delete the selected items?")
         if not confirm:
             return
-        if is_mac():
-            delete_items(selected)
-        elif is_windows():
-            delete_windows_items(selected)
+        delete_items(selected)
         self.start_refresh_dir_view()
 
     def update_breadcrumbs(self):
