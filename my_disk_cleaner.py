@@ -266,6 +266,20 @@ class DiskCleanerApp(tk.Tk):
 
     def on_toggle_dir_sizes(self):
         # Callback for checkbox toggle
+        # If loading, terminate the current process to cancel loading
+        if getattr(self, "loading", False) and hasattr(self, "_mp_process"):
+            try:
+                self._mp_process.terminate()
+            except Exception:
+                pass
+            self.loading = False
+            self.loading_label.config(text="")
+            self.delete_btn.config(state="disabled")
+            self.tree.delete(*self.tree.get_children())
+            if hasattr(self, "_mp_process"):
+                del self._mp_process
+            if hasattr(self, "_mp_queue"):
+                del self._mp_queue
         if self.selected_dir is None:
             self.refresh_initial_dirs()
         else:
