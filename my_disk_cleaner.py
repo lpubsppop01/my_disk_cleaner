@@ -119,8 +119,20 @@ class DiskCleanerApp(tk.Tk):
         self.refresh_initial_dirs()
         self.update_breadcrumbs()
 
+    @staticmethod
+    def get_display_name(entry):
+        # Add separator at the end of directory names
+        if entry.get('is_dir', False):
+            sep = '\\' if is_windows() else '/'
+            name = entry['name']
+            # Add separator only if not already present
+            if not name.endswith(sep):
+                name += sep
+            return name
+        return entry['name']
+
     def create_widgets(self):
-        # Frame for displaying breadcrumb navigation
+        # Frame for breadcrumb navigation
         self.breadcrumb_frame = tk.Frame(self)
         self.breadcrumb_frame.pack(anchor='nw', fill='x', padx=10, pady=5)
 
@@ -168,13 +180,15 @@ class DiskCleanerApp(tk.Tk):
                     size = 0
             else:
                 size = "-"
-            self.dir_entries.append({
+            entry = {
                 'name': dir_path,
                 'path': dir_path,
                 'is_dir': True,
                 'size': size
-            })
-            self.tree.insert("", "end", iid=dir_path, text=dir_path, values=(size,), tags=("dir",))
+            }
+            self.dir_entries.append(entry)
+            display_name = self.get_display_name(entry)
+            self.tree.insert("", "end", iid=dir_path, text=display_name, values=(size,), tags=("dir",))
         self.size_label.config(text="Directory size: -")
         self.loading_label.config(text="")
         self.delete_btn.config(state="disabled")
@@ -186,7 +200,7 @@ class DiskCleanerApp(tk.Tk):
         self.loading_label.config(text="Loading...")
         self.delete_btn.config(state="disabled")
         self.tree.delete(*self.tree.get_children())
-        # multiprocessing: start process and poll queue
+        # Start multiprocessing for directory view refresh
         import multiprocessing
         self._mp_queue = multiprocessing.Queue()
         p = multiprocessing.Process(target=DiskCleanerApp._refresh_dir_view_process, args=(self.selected_dir, self._mp_queue, self.show_dir_sizes.get()))
@@ -196,6 +210,15 @@ class DiskCleanerApp(tk.Tk):
 
     @staticmethod
     def _refresh_dir_view_process(selected_dir, queue, show_dir_sizes=True):
+        def get_display_name_static(entry):
+            if entry.get('is_dir', False):
+                sep = '\\' if is_windows() else '/'
+                name = entry['name']
+                if not name.endswith(sep):
+                    name += sep
+                return name
+            return entry['name']
+
         if not selected_dir:
             size = "-"
             entries = []
@@ -212,14 +235,20 @@ class DiskCleanerApp(tk.Tk):
                             if os.path.islink(entry.path) or is_windows_hardlink(entry.path):
                                 continue
                             size_val = "-" if entry.is_dir() else (entry.stat().st_size if entry.is_file() else "-")
-                            entries.append({
+                            entry_dict = {
                                 'name': entry.name,
                                 'path': entry.path,
                                 'is_dir': entry.is_dir(),
                                 'size': size_val
-                            })
+                            }
+                            entry_dict['name'] = get_display_name_static(entry_dict)
+                            entries.append(entry_dict)
                 except Exception:
                     pass
+            # ディレクトリサイズ表示ON時も表示名を修正
+            if show_dir_sizes:
+                for entry in entries:
+                    entry['name'] = get_display_name_static(entry)
         queue.put((size, entries))
 
     def _update_dir_view_ui(self, size, entries):
@@ -227,7 +256,8 @@ class DiskCleanerApp(tk.Tk):
         self.dir_entries = entries
         for entry in entries:
             tag = "dir" if entry['is_dir'] else "file"
-            self.tree.insert("", "end", iid=entry['path'], text=entry['name'], values=(entry['size'],), tags=(tag,))
+            display_name = self.get_display_name(entry)
+            self.tree.insert("", "end", iid=entry['path'], text=display_name, values=(entry['size'],), tags=(tag,))
         self.loading_label.config(text="")
         self.delete_btn.config(state="normal")
         self.loading = False
