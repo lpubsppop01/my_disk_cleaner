@@ -36,12 +36,14 @@ def is_windows():
 
 def is_windows_hardlink(path) -> bool:
     # Check if a file is a hard link on Windows
+    if not is_windows():
+        return False
     if not os.path.exists(path):
         return False
     try:
         import ctypes
         FILE_ATTRIBUTE_REPARSE_POINT = 0x0400
-        attrs = ctypes.windll.kernel32.GetFileAttributesW(str(path))
+        attrs = ctypes.windll.kernel32.GetFileAttributesW(str(path))  # type: ignore
         if attrs == -1:
             return False
         return bool(attrs & FILE_ATTRIBUTE_REPARSE_POINT)
@@ -168,12 +170,6 @@ class DiskCleanerApp(tk.Tk):
         self.size_label.config(text="Directory size: -")
         self.loading_label.config(text="")
         self.delete_btn.config(state="disabled")
-
-    def on_dir_selected(self, event=None):
-        dir_path = self.dir_combo.get()
-        self.selected_dir = dir_path
-        self.start_refresh_dir_view()
-        self.update_breadcrumbs()
 
     def start_refresh_dir_view(self):
         if self.loading:
