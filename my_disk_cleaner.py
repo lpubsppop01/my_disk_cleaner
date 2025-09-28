@@ -254,6 +254,8 @@ class DiskCleanerApp(tk.Tk):
             self.start_refresh_dir_view()
 
     def refresh_initial_dirs(self):
+        if self.loading:
+            return  # Prevent double loading
         if is_mac():
             dirs = MAC_INITIAL_DIRS
         elif is_windows():
@@ -264,17 +266,15 @@ class DiskCleanerApp(tk.Tk):
         self.dir_entries = []
         self.tree.delete(*self.tree.get_children())
         if self.show_dir_sizes.get():
-            # Calculate directory sizes in background process
             import multiprocessing
-            self._init_dirs_queue = multiprocessing.Queue()
-            p = multiprocessing.Process(target=self._calc_initial_dirs_sizes_process, args=(dirs, self._init_dirs_queue))
-            p.start()
-            self._init_dirs_process = p
+            self._queue = multiprocessing.Queue()
+            self._process = multiprocessing.Process(target=DiskCleanerApp._get_entries_process, args=(dirs, self._queue, True))
+            self._process.start()
+            self.loading = True
             self.loading_label.config(text="Loading...")
             self.delete_btn.config(state="disabled")
-            self.after(100, self._poll_init_dirs_queue)
+            self.after(100, self._poll_queue)
         else:
-            # No size calculation
             for dir_path in dirs:
                 entry = {
                     'name': dir_path,
@@ -296,51 +296,104 @@ class DiskCleanerApp(tk.Tk):
         self.loading_label.config(text="Loading...")
         self.delete_btn.config(state="disabled")
         self.tree.delete(*self.tree.get_children())
-        # Start multiprocessing for directory view refresh
         import multiprocessing
-        self._mp_queue = multiprocessing.Queue()
-        p = multiprocessing.Process(target=DiskCleanerApp._refresh_dir_view_process, args=(self.selected_dir, self._mp_queue, self.show_dir_sizes.get()))
-        p.start()
-        self._mp_process = p
-        self.after(100, self._poll_mp_queue)
+        self._queue = multiprocessing.Queue()
+        # Pass a single directory as a list
+        self._process = multiprocessing.Process(target=DiskCleanerApp._get_entries_process, args=([self.selected_dir], self._queue, self.show_dir_sizes.get()))
+        self._process.start()
+        self.after(100, self._poll_queue)
 
     @staticmethod
-    def _refresh_dir_view_process(selected_dir, queue, show_dir_sizes=True):
-        if not selected_dir:
-            size = "-"
-            entries = []
-        else:
-            if show_dir_sizes:
-                size = get_dir_size(selected_dir, queue)
-                entries = list_dir(selected_dir)
-            else:
-                size = "-"
-                entries = []
+    def _get_entries_process(targets, queue, show_dir_sizes=True):
+        """
+        targets: list of directory paths
+        show_dir_sizes: bool
+        """
+        import os
+        entries = []
+        for dir_path in targets:
+            queue.put(("progress", dir_path))
+            if not dir_path or not os.path.exists(dir_path):
+                continue
+            # Check if the path is a directory
+            if os.path.isdir(dir_path):
+                # Get the list of items under the directory
                 try:
-                    with os.scandir(selected_dir) as it:
+                    with os.scandir(dir_path) as it:
                         for entry in it:
                             if os.path.islink(entry.path) or is_windows_hardlink(entry.path):
                                 continue
-                            size_val = "-" if entry.is_dir() else (entry.stat().st_size if entry.is_file() else "-")
+                            if entry.is_file():
+                                size = entry.stat().st_size if show_dir_sizes else "-"
+                            elif entry.is_dir():
+                                try:
+                                    size = get_dir_size(entry.path, queue) if show_dir_sizes else "-"
+                                except Exception:
+                                    size = 0 if show_dir_sizes else "-"
+                            else:
+                                size = "-"
                             entry_dict = {
                                 'name': entry.name,
                                 'path': entry.path,
                                 'is_dir': entry.is_dir(),
-                                'size': size_val
+                                'size': size
                             }
                             entries.append(entry_dict)
                 except Exception:
                     pass
-        queue.put(("result", size, entries))
+            else:
+                # If it is a single file
+                try:
+                    size = os.path.getsize(dir_path) if show_dir_sizes else "-"
+                except Exception:
+                    size = 0 if show_dir_sizes else "-"
+                entry = {
+                    'name': os.path.basename(dir_path),
+                    'path': dir_path,
+                    'is_dir': False,
+                    'size': size
+                }
+                entries.append(entry)
+        queue.put(("result", entries))
 
-    def _update_dir_view_ui(self, size, entries):
-        self.size_label.config(text=f"Directory size: {size if isinstance(size, str) else f'{size:,} bytes'}")
+    def _poll_queue(self):
+        if hasattr(self, "_queue"):
+            try:
+                msg = self._queue.get_nowait()
+                if isinstance(msg, tuple) and msg[0] == "progress":
+                    dir_path = msg[1]
+                    self.loading_label.config(text=f"Loading...{dir_path}")
+                    self.after(100, self._poll_queue)
+                elif isinstance(msg, tuple) and msg[0] == "result":
+                    entries = msg[1]
+                    self._update_dir_view_ui(entries)
+                    if hasattr(self, "_process"):
+                        self._process.join(timeout=0.1)
+                        del self._process
+                    del self._queue
+                else:
+                    entries = msg
+                    self._update_dir_view_ui(entries)
+                    if hasattr(self, "_process"):
+                        self._process.join(timeout=0.1)
+                        del self._process
+                    del self._queue
+            except Exception:
+                self.after(100, self._poll_queue)
+
+    def _update_dir_view_ui(self, entries):
+        # Draw initial directory list or list under the directory
         self.dir_entries = entries
+        self.tree.delete(*self.tree.get_children())
         for entry in entries:
             tag = "dir" if entry['is_dir'] else "file"
             display_name = self.get_display_name(entry)
             display_size = "{:,}".format(entry['size']) if isinstance(entry['size'], int) else entry['size']
             self.tree.insert("", "end", iid=entry['path'], text=display_name, values=(display_size,), tags=(tag,))
+        dir_size_str = "-"
+        if self.show_dir_sizes.get() and self.selected_dir is not None:
+            dir_size_str = "{:,} bytes".format(get_dir_size(self.selected_dir))
+        self.size_label.config(text=f"Directory size: {dir_size_str}")
         self.loading_label.config(text="")
         self.delete_btn.config(state="normal")
         self.loading = False
@@ -348,51 +401,23 @@ class DiskCleanerApp(tk.Tk):
     def on_toggle_dir_sizes(self):
         # Callback for Show directory sizes checkbox toggle
         # If loading, terminate the current process to cancel loading
-        if getattr(self, "loading", False) and hasattr(self, "_mp_process"):
-            try:
-                self._mp_process.terminate()
-            except Exception:
-                pass
+        if getattr(self, "loading", False):
             self.loading = False
             self.loading_label.config(text="")
             self.delete_btn.config(state="disabled")
             self.tree.delete(*self.tree.get_children())
-            if hasattr(self, "_mp_process"):
-                del self._mp_process
-            if hasattr(self, "_mp_queue"):
-                del self._mp_queue
+        if hasattr(self, "_process"):
+            try:
+                self._process.terminate()
+            except Exception:
+                pass
+            del self._process
+        if hasattr(self, "_queue"):
+            del self._queue
         if self.selected_dir is None:
             self.refresh_initial_dirs()
         else:
             self.start_refresh_dir_view()
-
-    def _poll_mp_queue(self):
-        if hasattr(self, "_mp_queue"):
-            try:
-                msg = self._mp_queue.get_nowait()
-                if isinstance(msg, tuple) and msg[0] == "progress":
-                    filename = msg[1]
-                    self.loading_label.config(text=f"Loading...{filename}")
-                    self.after(100, self._poll_mp_queue)
-                elif isinstance(msg, tuple) and msg[0] == "result":
-                    size, entries = msg[1], msg[2]
-                    self._update_dir_view_ui(size, entries)
-                    # Process termination handling
-                    if hasattr(self, "_mp_process"):
-                        self._mp_process.join(timeout=0.1)
-                        del self._mp_process
-                    del self._mp_queue
-                else:
-                    # Old format (backward compatibility)
-                    size, entries = msg
-                    self._update_dir_view_ui(size, entries)
-                    if hasattr(self, "_mp_process"):
-                        self._mp_process.join(timeout=0.1)
-                        del self._mp_process
-                    del self._mp_queue
-            except Exception:
-                # If the queue is empty, call again with after
-                self.after(100, self._poll_mp_queue)
 
     def on_tree_double_click(self, event):
         item_id = self.tree.focus()
@@ -476,42 +501,6 @@ class DiskCleanerApp(tk.Tk):
             self.selected_dir = path
             self.start_refresh_dir_view()
             self.update_breadcrumbs()
-
-    @staticmethod
-    def _calc_initial_dirs_sizes_process(dirs, queue):
-        entries = []
-        for dir_path in dirs:
-            queue.put(("progress", dir_path))
-            try:
-                size = get_dir_size(dir_path, queue)
-            except Exception:
-                size = 0
-            entry = {
-                'name': dir_path,
-                'path': dir_path,
-                'is_dir': True,
-                'size': size
-            }
-            entries.append(entry)
-        queue.put(("result", entries))
-
-    def _poll_init_dirs_queue(self):
-        if hasattr(self, "_init_dirs_queue"):
-            try:
-                entries = self._init_dirs_queue.get_nowait()
-                self.dir_entries = entries
-                for entry in entries:
-                    display_name = self.get_display_name(entry)
-                    display_size = "{:,}".format(entry['size']) if isinstance(entry['size'], int) else entry['size']
-                    self.tree.insert("", "end", iid=entry['path'], text=display_name, values=(display_size,), tags=("dir",))
-                self.loading_label.config(text="")
-                self.delete_btn.config(state="disabled")
-                if hasattr(self, "_init_dirs_process"):
-                    self._init_dirs_process.join(timeout=0.1)
-                    del self._init_dirs_process
-                del self._init_dirs_queue
-            except Exception:
-                self.after(100, self._poll_init_dirs_queue)
 
 if __name__ == "__main__":
     app = DiskCleanerApp()
