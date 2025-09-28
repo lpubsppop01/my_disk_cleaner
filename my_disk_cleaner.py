@@ -27,6 +27,21 @@ MAC_INITIAL_DIRS = [
     os.path.expanduser('~/Library/Logs'),
     os.path.expanduser('~/Library/Application Support'),
     os.path.expanduser('~/Library/Containers'),
+    os.path.expanduser('~/Downloads'),
+    os.path.expanduser('~/.ollama'),
+    '/Library/Caches',
+    '/Library/Logs',
+    '/Library/Application Support',
+    '/System/Library/Caches',
+    '/System/Library/Logs',
+    '/System/Library/Application Support',
+    '/private/var/folders',
+    '/private/var/log',
+    '/private/var/tmp',
+    '/private/var/vm',
+    '/private/tmp',
+    '/private/vm',
+    '/Applications',
 ]
 
 WINDOWS_INITIAL_DIRS = [
