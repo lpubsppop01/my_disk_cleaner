@@ -106,6 +106,7 @@ def get_dir_size(path, queue=None):
         return size
     # If cache is missing or mtime is different, recalculate
     total = 0
+    count = 0
     for root, dirs, files in os.walk(path):
         for f in files:
             try:
@@ -113,7 +114,8 @@ def get_dir_size(path, queue=None):
                 # Exclude symbolic links from size calculation
                 if os.path.islink(fp) or is_windows_hardlink(fp):
                     continue
-                if queue is not None:
+                count += 1
+                if queue is not None and count % 100 == 0:
                     queue.put(("progress", fp))
                 total += os.path.getsize(fp)
             except Exception:
@@ -304,15 +306,6 @@ class DiskCleanerApp(tk.Tk):
 
     @staticmethod
     def _refresh_dir_view_process(selected_dir, queue, show_dir_sizes=True):
-        def get_display_name_static(entry):
-            if entry.get('is_dir', False):
-                sep = '\\' if is_windows() else '/'
-                name = entry['name']
-                if not name.endswith(sep):
-                    name += sep
-                return name
-            return entry['name']
-
         if not selected_dir:
             size = "-"
             entries = []
@@ -335,18 +328,9 @@ class DiskCleanerApp(tk.Tk):
                                 'is_dir': entry.is_dir(),
                                 'size': size_val
                             }
-                            entry_dict['name'] = get_display_name_static(entry_dict)
                             entries.append(entry_dict)
                 except Exception:
                     pass
-            # Update display name when directory size display is ON
-            if show_dir_sizes:
-                for entry in entries:
-                    entry['name'] = get_display_name_static(entry)
-        # Progress notification (only when directory size calculation is ON)
-        if show_dir_sizes:
-            for entry in entries:
-                queue.put(("progress", entry['name']))
         queue.put(("result", size, entries))
 
     def _update_dir_view_ui(self, size, entries):
