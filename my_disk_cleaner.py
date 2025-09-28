@@ -114,6 +114,7 @@ class DiskCleanerApp(tk.Tk):
         self.dir_entries = []
         self.selected_items = set()
         self.loading = False
+        self.show_dir_sizes = tk.BooleanVar(value=False)
         self.create_widgets()
         self.refresh_initial_dirs()
         self.update_breadcrumbs()
@@ -122,6 +123,10 @@ class DiskCleanerApp(tk.Tk):
         # Frame for displaying breadcrumb navigation
         self.breadcrumb_frame = tk.Frame(self)
         self.breadcrumb_frame.pack(anchor='nw', fill='x', padx=10, pady=5)
+
+        # Checkbox for toggling directory size calculation
+        self.size_checkbox = tk.Checkbutton(self, text="Show directory sizes", variable=self.show_dir_sizes, command=self.on_toggle_dir_sizes)
+        self.size_checkbox.pack(anchor='nw', padx=10, pady=5)
 
         # Directory size display
         self.size_label = tk.Label(self, text="Directory size: ")
@@ -156,10 +161,13 @@ class DiskCleanerApp(tk.Tk):
         self.tree.delete(*self.tree.get_children())
         for dir_path in dirs:
             # Get directory size (if slow, use 0 or "-")
-            try:
-                size = get_dir_size(dir_path)
-            except Exception:
-                size = 0
+            if self.show_dir_sizes.get():
+                try:
+                    size = get_dir_size(dir_path)
+                except Exception:
+                    size = 0
+            else:
+                size = "-"
             self.dir_entries.append({
                 'name': dir_path,
                 'path': dir_path,
@@ -181,19 +189,37 @@ class DiskCleanerApp(tk.Tk):
         # multiprocessing: start process and poll queue
         import multiprocessing
         self._mp_queue = multiprocessing.Queue()
-        p = multiprocessing.Process(target=DiskCleanerApp._refresh_dir_view_process, args=(self.selected_dir, self._mp_queue))
+        p = multiprocessing.Process(target=DiskCleanerApp._refresh_dir_view_process, args=(self.selected_dir, self._mp_queue, self.show_dir_sizes.get()))
         p.start()
         self._mp_process = p
         self.after(100, self._poll_mp_queue)
 
     @staticmethod
-    def _refresh_dir_view_process(selected_dir, queue):
+    def _refresh_dir_view_process(selected_dir, queue, show_dir_sizes=True):
         if not selected_dir:
             size = "-"
             entries = []
         else:
-            size = get_dir_size(selected_dir)
-            entries = list_dir(selected_dir)
+            if show_dir_sizes:
+                size = get_dir_size(selected_dir)
+                entries = list_dir(selected_dir)
+            else:
+                size = "-"
+                entries = []
+                try:
+                    with os.scandir(selected_dir) as it:
+                        for entry in it:
+                            if os.path.islink(entry.path) or is_windows_hardlink(entry.path):
+                                continue
+                            size_val = "-" if entry.is_dir() else (entry.stat().st_size if entry.is_file() else "-")
+                            entries.append({
+                                'name': entry.name,
+                                'path': entry.path,
+                                'is_dir': entry.is_dir(),
+                                'size': size_val
+                            })
+                except Exception:
+                    pass
         queue.put((size, entries))
 
     def _update_dir_view_ui(self, size, entries):
@@ -205,6 +231,13 @@ class DiskCleanerApp(tk.Tk):
         self.loading_label.config(text="")
         self.delete_btn.config(state="normal")
         self.loading = False
+
+    def on_toggle_dir_sizes(self):
+        # Callback for checkbox toggle
+        if self.selected_dir is None:
+            self.refresh_initial_dirs()
+        else:
+            self.start_refresh_dir_view()
 
     def _poll_mp_queue(self):
         if hasattr(self, "_mp_queue"):
