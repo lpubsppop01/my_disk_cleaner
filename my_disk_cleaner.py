@@ -171,28 +171,31 @@ class DiskCleanerApp(tk.Tk):
         self.selected_dir = None
         self.dir_entries = []
         self.tree.delete(*self.tree.get_children())
-        for dir_path in dirs:
-            # Get directory size (if slow, use 0 or "-")
-            if self.show_dir_sizes.get():
-                try:
-                    size = get_dir_size(dir_path)
-                except Exception:
-                    size = 0
-            else:
-                size = "-"
-            entry = {
-                'name': dir_path,
-                'path': dir_path,
-                'is_dir': True,
-                'size': size
-            }
-            self.dir_entries.append(entry)
-            display_name = self.get_display_name(entry)
-            display_size = "{:,}".format(size) if isinstance(size, int) else size
-            self.tree.insert("", "end", iid=dir_path, text=display_name, values=(display_size,), tags=("dir",))
-        self.size_label.config(text="Directory size: -")
-        self.loading_label.config(text="")
-        self.delete_btn.config(state="disabled")
+        if self.show_dir_sizes.get():
+            # Calculate directory sizes in background process
+            import multiprocessing
+            self._init_dirs_queue = multiprocessing.Queue()
+            p = multiprocessing.Process(target=self._calc_initial_dirs_sizes_process, args=(dirs, self._init_dirs_queue))
+            p.start()
+            self._init_dirs_process = p
+            self.loading_label.config(text="Loading...")
+            self.delete_btn.config(state="disabled")
+            self.after(100, self._poll_init_dirs_queue)
+        else:
+            # No size calculation
+            for dir_path in dirs:
+                entry = {
+                    'name': dir_path,
+                    'path': dir_path,
+                    'is_dir': True,
+                    'size': "-"
+                }
+                self.dir_entries.append(entry)
+                display_name = self.get_display_name(entry)
+                self.tree.insert("", "end", iid=dir_path, text=display_name, values=("-",), tags=("dir",))
+            self.size_label.config(text="Directory size: -")
+            self.loading_label.config(text="")
+            self.delete_btn.config(state="disabled")
 
     def start_refresh_dir_view(self):
         if self.loading:
@@ -246,7 +249,7 @@ class DiskCleanerApp(tk.Tk):
                             entries.append(entry_dict)
                 except Exception:
                     pass
-            # ディレクトリサイズ表示ON時も表示名を修正
+            # Update display name when directory size display is ON
             if show_dir_sizes:
                 for entry in entries:
                     entry['name'] = get_display_name_static(entry)
@@ -377,6 +380,41 @@ class DiskCleanerApp(tk.Tk):
             self.selected_dir = path
             self.start_refresh_dir_view()
             self.update_breadcrumbs()
+
+    @staticmethod
+    def _calc_initial_dirs_sizes_process(dirs, queue):
+        entries = []
+        for dir_path in dirs:
+            try:
+                size = get_dir_size(dir_path)
+            except Exception:
+                size = 0
+            entry = {
+                'name': dir_path,
+                'path': dir_path,
+                'is_dir': True,
+                'size': size
+            }
+            entries.append(entry)
+        queue.put(entries)
+
+    def _poll_init_dirs_queue(self):
+        if hasattr(self, "_init_dirs_queue"):
+            try:
+                entries = self._init_dirs_queue.get_nowait()
+                self.dir_entries = entries
+                for entry in entries:
+                    display_name = self.get_display_name(entry)
+                    display_size = "{:,}".format(entry['size']) if isinstance(entry['size'], int) else entry['size']
+                    self.tree.insert("", "end", iid=entry['path'], text=display_name, values=(display_size,), tags=("dir",))
+                self.loading_label.config(text="")
+                self.delete_btn.config(state="disabled")
+                if hasattr(self, "_init_dirs_process"):
+                    self._init_dirs_process.join(timeout=0.1)
+                    del self._init_dirs_process
+                del self._init_dirs_queue
+            except Exception:
+                self.after(100, self._poll_init_dirs_queue)
 
 if __name__ == "__main__":
     app = DiskCleanerApp()
