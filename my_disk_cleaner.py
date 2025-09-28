@@ -188,7 +188,8 @@ class DiskCleanerApp(tk.Tk):
             }
             self.dir_entries.append(entry)
             display_name = self.get_display_name(entry)
-            self.tree.insert("", "end", iid=dir_path, text=display_name, values=(size,), tags=("dir",))
+            display_size = "{:,}".format(size) if isinstance(size, int) else size
+            self.tree.insert("", "end", iid=dir_path, text=display_name, values=(display_size,), tags=("dir",))
         self.size_label.config(text="Directory size: -")
         self.loading_label.config(text="")
         self.delete_btn.config(state="disabled")
@@ -257,7 +258,8 @@ class DiskCleanerApp(tk.Tk):
         for entry in entries:
             tag = "dir" if entry['is_dir'] else "file"
             display_name = self.get_display_name(entry)
-            self.tree.insert("", "end", iid=entry['path'], text=display_name, values=(entry['size'],), tags=(tag,))
+            display_size = "{:,}".format(entry['size']) if isinstance(entry['size'], int) else entry['size']
+            self.tree.insert("", "end", iid=entry['path'], text=display_name, values=(display_size,), tags=(tag,))
         self.loading_label.config(text="")
         self.delete_btn.config(state="normal")
         self.loading = False
