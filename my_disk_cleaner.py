@@ -1,8 +1,25 @@
 import os
 import sys
 import shutil
+import sqlite3
 import tkinter as tk
 from tkinter import ttk, messagebox
+
+# SQLite cache DB initialization
+CACHE_DB_PATH = os.path.join(os.path.dirname(__file__), "cache.db")
+def init_cache_db():
+    conn = sqlite3.connect(CACHE_DB_PATH)
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS dir_size_cache (
+            path TEXT PRIMARY KEY,
+            size INTEGER,
+            mtime INTEGER
+        )
+    """)
+    conn.commit()
+    conn.close()
+init_cache_db()
 
 # Initial candidate directories (for Mac)
 MAC_INITIAL_DIRS = [
@@ -50,8 +67,29 @@ def is_windows_hardlink(path) -> bool:
     except Exception:
         return False
 
-# Directory size calculation for Mac
+# Directory size calculation with SQLite cache
 def get_dir_size(path, queue=None):
+    import sqlite3
+    mtime = None
+    try:
+        mtime = int(os.path.getmtime(path))
+    except Exception:
+        mtime = None
+    size = None
+    if mtime is not None:
+        try:
+            conn = sqlite3.connect(CACHE_DB_PATH)
+            c = conn.cursor()
+            c.execute("SELECT size, mtime FROM dir_size_cache WHERE path=?", (path,))
+            row = c.fetchone()
+            if row and row[1] == mtime:
+                size = row[0]
+            conn.close()
+        except Exception:
+            size = None
+    if size is not None:
+        return size
+    # If cache is missing or mtime is different, recalculate
     total = 0
     for root, dirs, files in os.walk(path):
         for f in files:
@@ -65,6 +103,16 @@ def get_dir_size(path, queue=None):
                 total += os.path.getsize(fp)
             except Exception:
                 pass
+    # Save calculation result to cache
+    if mtime is not None:
+        try:
+            conn = sqlite3.connect(CACHE_DB_PATH)
+            c = conn.cursor()
+            c.execute("INSERT OR REPLACE INTO dir_size_cache (path, size, mtime) VALUES (?, ?, ?)", (path, total, mtime))
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
     return total
 
 # List files and directories for Mac
@@ -138,11 +186,19 @@ class DiskCleanerApp(tk.Tk):
         self.breadcrumb_frame = tk.Frame(self)
         self.breadcrumb_frame.pack(anchor='nw', fill='x', padx=10, pady=5)
 
-        # Checkbox for toggling directory size calculation
-        self.size_checkbox = tk.Checkbutton(self, text="Show directory sizes", variable=self.show_dir_sizes, command=self.on_toggle_dir_sizes)
-        self.size_checkbox.pack(anchor='nw', padx=10, pady=5)
+        # Frame for buttons (Show directory sizes & Clear Cache)
+        self.button_frame = tk.Frame(self)
+        self.button_frame.pack(anchor='nw', fill='x', padx=10, pady=5)
 
-        # Directory size display
+        # Checkbox for toggling directory size calculation
+        self.size_checkbox = tk.Checkbutton(self.button_frame, text="Show directory sizes", variable=self.show_dir_sizes, command=self.on_toggle_dir_sizes)
+        self.size_checkbox.pack(anchor='s', side='left')
+
+        # Clear Cache button (right of Show directory sizes)
+        self.clear_cache_btn = tk.Button(self.button_frame, text="Clear Cache", command=self.on_clear_cache)
+        self.clear_cache_btn.pack(anchor='s', padx=10, side='left')
+
+        # Label for directory size display
         self.size_label = tk.Label(self, text="Directory size: ")
         self.size_label.pack(anchor='nw', padx=10, pady=5)
 
@@ -162,6 +218,23 @@ class DiskCleanerApp(tk.Tk):
         # Delete button
         self.delete_btn = tk.Button(self, text="Delete selected items", command=self.on_delete)
         self.delete_btn.pack(anchor='se', padx=10, pady=10)
+
+    def on_clear_cache(self):
+        # Clear cache in SQLite DB
+        import sqlite3
+        try:
+            conn = sqlite3.connect(CACHE_DB_PATH)
+            c = conn.cursor()
+            c.execute("DELETE FROM dir_size_cache")
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
+        # Refresh UI after clearing cache
+        if self.selected_dir is None:
+            self.refresh_initial_dirs()
+        else:
+            self.start_refresh_dir_view()
 
     def refresh_initial_dirs(self):
         if is_mac():
@@ -274,7 +347,7 @@ class DiskCleanerApp(tk.Tk):
         self.loading = False
 
     def on_toggle_dir_sizes(self):
-        # Callback for checkbox toggle
+        # Callback for Show directory sizes checkbox toggle
         # If loading, terminate the current process to cancel loading
         if getattr(self, "loading", False) and hasattr(self, "_mp_process"):
             try:
@@ -348,12 +421,12 @@ class DiskCleanerApp(tk.Tk):
         for widget in self.breadcrumb_frame.winfo_children():
             widget.destroy()
         if self.selected_dir is None:
-            # Initial directories list view label
+            # Label for initial directories list view
             lbl = tk.Label(self.breadcrumb_frame, text="Initial Directories", relief=tk.FLAT)
             lbl.pack(side='left')
             return
         else:
-            # Initial directories list view button
+            # Button for initial directories list view
             btn = tk.Button(self.breadcrumb_frame, text="Initial Directories", relief=tk.FLAT, command=self.refresh_initial_dirs)
             btn.pack(side='left')
             sep = tk.Label(self.breadcrumb_frame, text=" > ")
