@@ -427,7 +427,7 @@ class DiskCleanerApp(tk.Tk):
             return
         else:
             # Button for initial directories list view
-            btn = tk.Button(self.breadcrumb_frame, text="Initial Directories", relief=tk.FLAT, command=self.refresh_initial_dirs)
+            btn = tk.Button(self.breadcrumb_frame, text="Initial Directories", relief=tk.FLAT, command=lambda: self.on_breadcrumb_click(""))
             btn.pack(side='left')
             sep = tk.Label(self.breadcrumb_frame, text=" > ")
             sep.pack(side='left')
@@ -435,12 +435,13 @@ class DiskCleanerApp(tk.Tk):
         # Breadcrumb navigation
         parts = []
         path = self.selected_dir
+        matched_initial = ""
         for initial in (MAC_INITIAL_DIRS if is_mac() else WINDOWS_INITIAL_DIRS):
             if path == initial or path.startswith(initial + os.sep):
                 parts.append((initial, initial))
-                path = path[len(initial):].lstrip(os.sep)
+                matched_initial = initial
                 break
-        while True:
+        while path != matched_initial:
             head, tail = os.path.split(path)
             if tail:
                 parts.insert(1, (tail, path))
@@ -469,7 +470,10 @@ class DiskCleanerApp(tk.Tk):
 
     def on_breadcrumb_click(self, path):
         # Navigate to the directory when breadcrumb is clicked
-        if path != self.selected_dir:
+        if not path:
+            self.refresh_initial_dirs()
+            self.update_breadcrumbs()
+        elif path != self.selected_dir:
             self.selected_dir = path
             self.start_refresh_dir_view()
             self.update_breadcrumbs()
