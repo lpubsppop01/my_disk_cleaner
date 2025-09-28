@@ -51,7 +51,7 @@ def is_windows_hardlink(path) -> bool:
         return False
 
 # Directory size calculation for Mac
-def get_dir_size(path):
+def get_dir_size(path, queue=None):
     total = 0
     for root, dirs, files in os.walk(path):
         for f in files:
@@ -60,6 +60,8 @@ def get_dir_size(path):
                 # Exclude symbolic links from size calculation
                 if os.path.islink(fp) or is_windows_hardlink(fp):
                     continue
+                if queue is not None:
+                    queue.put(("progress", fp))
                 total += os.path.getsize(fp)
             except Exception:
                 pass
@@ -228,7 +230,7 @@ class DiskCleanerApp(tk.Tk):
             entries = []
         else:
             if show_dir_sizes:
-                size = get_dir_size(selected_dir)
+                size = get_dir_size(selected_dir, queue)
                 entries = list_dir(selected_dir)
             else:
                 size = "-"
@@ -253,7 +255,11 @@ class DiskCleanerApp(tk.Tk):
             if show_dir_sizes:
                 for entry in entries:
                     entry['name'] = get_display_name_static(entry)
-        queue.put((size, entries))
+        # Progress notification (only when directory size calculation is ON)
+        if show_dir_sizes:
+            for entry in entries:
+                queue.put(("progress", entry['name']))
+        queue.put(("result", size, entries))
 
     def _update_dir_view_ui(self, size, entries):
         self.size_label.config(text=f"Directory size: {size if isinstance(size, str) else f'{size:,} bytes'}")
@@ -291,13 +297,27 @@ class DiskCleanerApp(tk.Tk):
     def _poll_mp_queue(self):
         if hasattr(self, "_mp_queue"):
             try:
-                size, entries = self._mp_queue.get_nowait()
-                self._update_dir_view_ui(size, entries)
-                # Process termination handling
-                if hasattr(self, "_mp_process"):
-                    self._mp_process.join(timeout=0.1)
-                    del self._mp_process
-                del self._mp_queue
+                msg = self._mp_queue.get_nowait()
+                if isinstance(msg, tuple) and msg[0] == "progress":
+                    filename = msg[1]
+                    self.loading_label.config(text=f"Loading...{filename}")
+                    self.after(100, self._poll_mp_queue)
+                elif isinstance(msg, tuple) and msg[0] == "result":
+                    size, entries = msg[1], msg[2]
+                    self._update_dir_view_ui(size, entries)
+                    # Process termination handling
+                    if hasattr(self, "_mp_process"):
+                        self._mp_process.join(timeout=0.1)
+                        del self._mp_process
+                    del self._mp_queue
+                else:
+                    # Old format (backward compatibility)
+                    size, entries = msg
+                    self._update_dir_view_ui(size, entries)
+                    if hasattr(self, "_mp_process"):
+                        self._mp_process.join(timeout=0.1)
+                        del self._mp_process
+                    del self._mp_queue
             except Exception:
                 # If the queue is empty, call again with after
                 self.after(100, self._poll_mp_queue)
@@ -385,8 +405,9 @@ class DiskCleanerApp(tk.Tk):
     def _calc_initial_dirs_sizes_process(dirs, queue):
         entries = []
         for dir_path in dirs:
+            queue.put(("progress", dir_path))
             try:
-                size = get_dir_size(dir_path)
+                size = get_dir_size(dir_path, queue)
             except Exception:
                 size = 0
             entry = {
@@ -396,7 +417,7 @@ class DiskCleanerApp(tk.Tk):
                 'size': size
             }
             entries.append(entry)
-        queue.put(entries)
+        queue.put(("result", entries))
 
     def _poll_init_dirs_queue(self):
         if hasattr(self, "_init_dirs_queue"):
