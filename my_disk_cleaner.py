@@ -5,10 +5,22 @@ import sqlite3
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-# SQLite cache DB initialization
-CACHE_DB_PATH = os.path.join(os.path.dirname(__file__), "cache.db")
-def init_cache_db():
-    conn = sqlite3.connect(CACHE_DB_PATH)
+# SQLite admin DB initialization
+def get_admin_db_path():
+    import platform
+    if sys.platform.startswith('win'):
+        local_appdata = os.environ.get('LOCALAPPDATA', os.path.expanduser('~\\AppData\\Local'))
+        db_dir = os.path.join(local_appdata, "lpubsppop01_my_disk_cleaner")
+    else:
+        db_dir = os.path.expanduser("~/.lpubsppop01_my_disk_cleaner")
+    if not os.path.exists(db_dir):
+        os.makedirs(db_dir, exist_ok=True)
+    return os.path.join(db_dir, "admin.db")
+
+ADMIN_DB_PATH = get_admin_db_path()
+
+def init_admin_db():
+    conn = sqlite3.connect(ADMIN_DB_PATH)
     c = conn.cursor()
     c.execute("""
         CREATE TABLE IF NOT EXISTS dir_size_cache (
@@ -19,7 +31,7 @@ def init_cache_db():
     """)
     conn.commit()
     conn.close()
-init_cache_db()
+init_admin_db()
 
 # Initial candidate directories (for Mac)
 MAC_INITIAL_DIRS = [
@@ -93,7 +105,7 @@ def get_dir_size(path, queue=None):
     size = None
     if mtime is not None:
         try:
-            conn = sqlite3.connect(CACHE_DB_PATH)
+            conn = sqlite3.connect(ADMIN_DB_PATH)
             c = conn.cursor()
             c.execute("SELECT size, mtime FROM dir_size_cache WHERE path=?", (path,))
             row = c.fetchone()
@@ -123,7 +135,7 @@ def get_dir_size(path, queue=None):
     # Save calculation result to cache
     if mtime is not None:
         try:
-            conn = sqlite3.connect(CACHE_DB_PATH)
+            conn = sqlite3.connect(ADMIN_DB_PATH)
             c = conn.cursor()
             c.execute("INSERT OR REPLACE INTO dir_size_cache (path, size, mtime) VALUES (?, ?, ?)", (path, total, mtime))
             conn.commit()
@@ -240,7 +252,14 @@ class DiskCleanerApp(tk.Tk):
         # Clear cache in SQLite DB
         import sqlite3
         try:
-            conn = sqlite3.connect(CACHE_DB_PATH)
+            conn = sqlite3.connect(ADMIN_DB_PATH)
+            c = conn.cursor()
+            c.execute("DELETE FROM dir_size_cache")
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
+            conn = sqlite3.connect(ADMIN_DB_PATH)
             c = conn.cursor()
             c.execute("DELETE FROM dir_size_cache")
             conn.commit()
