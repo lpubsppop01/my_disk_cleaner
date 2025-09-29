@@ -275,13 +275,9 @@ class DiskCleanerApp(tk.Tk):
         self.size_checkbox = tk.Checkbutton(self.button_frame, text="Show directory sizes", variable=self.show_dir_sizes, command=self.on_toggle_dir_sizes)
         self.size_checkbox.grid(row=0, column=2, sticky='w', padx=5, pady=0)
 
-        # Label for directory size display
-        self.size_label = tk.Label(self, text="Directory size: ")
-        self.size_label.grid(row=2, column=0, sticky='w', padx=10, pady=5)
-
-        # Loading indicator
-        self.loading_label = tk.Label(self, text="")
-        self.loading_label.grid(row=2, column=1, sticky='w', padx=10, pady=5)
+        # Status label (Unified label)
+        self.status_label = tk.Label(self, text="", anchor='w')
+        self.status_label.grid(row=2, column=0, columnspan=2, sticky='ew', padx=10, pady=5)
 
         # File/Directory list
         self.tree = ttk.Treeview(self, columns=("size",), selectmode="extended")
@@ -295,6 +291,19 @@ class DiskCleanerApp(tk.Tk):
         # Delete button
         self.delete_btn = tk.Button(self, text="Delete selected items", command=self.on_delete)
         self.delete_btn.grid(row=4, column=1, sticky='e', padx=10, pady=10)
+
+    def set_status_text(self, text):
+        import tkinter.font
+        label_width = self.status_label.winfo_width()
+        font = tkinter.font.Font(font=self.status_label.cget("font"))
+        char_width = font.measure("A") or 8  # Assume 8px if unable to get width
+        if label_width > 1 and char_width > 0:
+            max_len = label_width // char_width
+        else:
+            max_len = 100  # Default if width is not determined yet
+        if len(text) > max_len:
+            text = text[:max_len-3] + "..."
+        self.status_label.config(text=text)
 
     def show_edit_initial_dirs_dialog(self):
         # Method to display the edit dialog
@@ -388,7 +397,7 @@ class DiskCleanerApp(tk.Tk):
             self._process = multiprocessing.Process(target=DiskCleanerApp._get_entries_process, args=(dirs, self._queue, True))
             self._process.start()
             self.loading = True
-            self.loading_label.config(text="Loading...")
+            self.set_status_text("Loading...")
             self.delete_btn.config(state="disabled")
             self.after(100, self._poll_queue)
         else:
@@ -402,15 +411,17 @@ class DiskCleanerApp(tk.Tk):
                 self.dir_entries.append(entry)
                 display_name = self.get_display_name(entry)
                 self.tree.insert("", "end", iid=dir_path, text=display_name, values=("-",), tags=("dir",))
-            self.size_label.config(text="Directory size: -")
-            self.loading_label.config(text="")
-            self.delete_btn.config(state="disabled")
+        if self.loading:
+            self.set_status_text("Loading...")
+        else:
+            self.set_status_text("Directory size: -")
+        self.delete_btn.config(state="disabled")
 
     def start_refresh_dir_view(self):
         if self.loading:
             return  # Prevent double loading
         self.loading = True
-        self.loading_label.config(text="Loading...")
+        self.set_status_text("Loading...")
         self.delete_btn.config(state="disabled")
         self.tree.delete(*self.tree.get_children())
         import multiprocessing
@@ -479,7 +490,7 @@ class DiskCleanerApp(tk.Tk):
                 msg = self._queue.get_nowait()
                 if isinstance(msg, tuple) and msg[0] == "progress":
                     dir_path = msg[1]
-                    self.loading_label.config(text=f"Loading...{dir_path}")
+                    self.set_status_text(f"Loading...{dir_path}")
                     self.after(100, self._poll_queue)
                 elif isinstance(msg, tuple) and msg[0] == "result":
                     entries = msg[1]
@@ -510,8 +521,7 @@ class DiskCleanerApp(tk.Tk):
         dir_size_str = "-"
         if self.show_dir_sizes.get() and self.selected_dir is not None:
             dir_size_str = "{:,} bytes".format(get_dir_size(self.selected_dir))
-        self.size_label.config(text=f"Directory size: {dir_size_str}")
-        self.loading_label.config(text="")
+        self.set_status_text(f"Directory size: {dir_size_str}")
         self.delete_btn.config(state="normal")
         self.loading = False
 
@@ -520,7 +530,7 @@ class DiskCleanerApp(tk.Tk):
         # If loading, terminate the current process to cancel loading
         if getattr(self, "loading", False):
             self.loading = False
-            self.loading_label.config(text="")
+            self.set_status_text("")
             self.delete_btn.config(state="disabled")
             self.tree.delete(*self.tree.get_children())
         if hasattr(self, "_process"):
