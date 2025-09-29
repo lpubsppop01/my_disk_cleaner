@@ -241,12 +241,14 @@ class DiskCleanerApp(tk.Tk):
         self.grid_columnconfigure(1, weight=0)
 
         # Canvas + Frame + Scrollbar for breadcrumb navigation (height fixed, horizontal scroll)
-        self.breadcrumb_canvas = tk.Canvas(self, height=32, highlightthickness=0, bd=0)
-        self.breadcrumb_canvas.grid(row=0, column=0, columnspan=2, sticky='ew', padx=10, pady=5)
+        self.breadcrumb_frame = tk.Frame(self)
+        self.breadcrumb_frame.grid(row=0, column=0, columnspan=2, sticky='ew')
+        self.breadcrumb_canvas = tk.Canvas(self.breadcrumb_frame, height=32, highlightthickness=0, bd=0)
+        self.breadcrumb_canvas.pack(side='top', fill='x', expand=True)
         self.breadcrumb_inner_frame = tk.Frame(self.breadcrumb_canvas)
         self.breadcrumb_window = self.breadcrumb_canvas.create_window((0, 0), window=self.breadcrumb_inner_frame, anchor='nw')
-        self.breadcrumb_scrollbar = tk.Scrollbar(self, orient='horizontal', command=self.breadcrumb_canvas.xview)
-        self.breadcrumb_scrollbar.grid(row=1, column=0, columnspan=2, sticky='ew', padx=10, pady=(0,5))
+        self.breadcrumb_scrollbar = tk.Scrollbar(self.breadcrumb_frame, orient='horizontal', command=self.breadcrumb_canvas.xview)
+        self.breadcrumb_scrollbar.pack(side='bottom', fill='x')
         self.breadcrumb_canvas.configure(xscrollcommand=self.breadcrumb_scrollbar.set)
         self.breadcrumb_inner_frame.bind(
             "<Configure>",
@@ -271,7 +273,7 @@ class DiskCleanerApp(tk.Tk):
 
         # Checkbox for toggling directory size calculation (next to Clear Cache)
         self.size_checkbox = tk.Checkbutton(self.button_frame, text="Show directory sizes", variable=self.show_dir_sizes, command=self.on_toggle_dir_sizes)
-        self.size_checkbox.grid(row=0, column=2, sticky='w', padx=10, pady=0)
+        self.size_checkbox.grid(row=0, column=2, sticky='w', padx=5, pady=0)
 
         # Label for directory size display
         self.size_label = tk.Label(self, text="Directory size: ")
@@ -562,7 +564,7 @@ class DiskCleanerApp(tk.Tk):
         if self.selected_dir is None:
             # Label for initial directories list view
             lbl = tk.Label(self.breadcrumb_inner_frame, text="Initial Directories", relief=tk.FLAT)
-            lbl.pack(side='left')
+            lbl.pack(side='left', padx=2, pady=2)
             self.breadcrumb_canvas.update_idletasks()
             self.breadcrumb_canvas.configure(scrollregion=self.breadcrumb_canvas.bbox("all"))
             return
