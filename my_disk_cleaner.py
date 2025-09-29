@@ -235,33 +235,51 @@ class DiskCleanerApp(tk.Tk):
         return entry['name']
 
     def create_widgets(self):
-        # Frame for breadcrumb navigation
-        self.breadcrumb_frame = tk.Frame(self)
-        self.breadcrumb_frame.pack(anchor='nw', fill='x', padx=10, pady=5)
+        # Configure grid weights for main window
+        self.grid_rowconfigure(3, weight=1)
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_columnconfigure(1, weight=0)
+
+        # Canvas + Frame + Scrollbar for breadcrumb navigation (height fixed, horizontal scroll)
+        self.breadcrumb_canvas = tk.Canvas(self, height=32, highlightthickness=0, bd=0)
+        self.breadcrumb_canvas.grid(row=0, column=0, columnspan=2, sticky='ew', padx=10, pady=5)
+        self.breadcrumb_inner_frame = tk.Frame(self.breadcrumb_canvas)
+        self.breadcrumb_window = self.breadcrumb_canvas.create_window((0, 0), window=self.breadcrumb_inner_frame, anchor='nw')
+        self.breadcrumb_scrollbar = tk.Scrollbar(self, orient='horizontal', command=self.breadcrumb_canvas.xview)
+        self.breadcrumb_scrollbar.grid(row=1, column=0, columnspan=2, sticky='ew', padx=10, pady=(0,5))
+        self.breadcrumb_canvas.configure(xscrollcommand=self.breadcrumb_scrollbar.set)
+        self.breadcrumb_inner_frame.bind(
+            "<Configure>",
+            lambda e: self.breadcrumb_canvas.configure(scrollregion=self.breadcrumb_canvas.bbox("all"))
+        )
+        self.breadcrumb_canvas.pack_propagate(False)
 
         # Frame for buttons (Show directory sizes & Clear Cache)
         self.button_frame = tk.Frame(self)
-        self.button_frame.pack(anchor='nw', fill='x', padx=10, pady=5)
+        self.button_frame.grid(row=1, column=0, columnspan=2, sticky='ew', padx=10, pady=5)
+        self.button_frame.grid_columnconfigure(0, weight=0)
+        self.button_frame.grid_columnconfigure(1, weight=0)
+        self.button_frame.grid_columnconfigure(2, weight=0)
 
-        # Edit Initial Directories button (right of Clear Cache)
+        # Edit Initial Directories button (leftmost)
         self.edit_initial_dirs_btn = tk.Button(self.button_frame, text="Edit Initial Directories", command=self.show_edit_initial_dirs_dialog)
-        self.edit_initial_dirs_btn.pack(anchor='s', side='left')
+        self.edit_initial_dirs_btn.grid(row=0, column=0, sticky='w', padx=0, pady=0)
 
-        # Clear Cache button (right of Show directory sizes)
+        # Clear Cache button (next to Edit Initial Directories)
         self.clear_cache_btn = tk.Button(self.button_frame, text="Clear Cache", command=self.on_clear_cache)
-        self.clear_cache_btn.pack(anchor='s', padx=10, side='left')
+        self.clear_cache_btn.grid(row=0, column=1, sticky='w', padx=10, pady=0)
 
-        # Checkbox for toggling directory size calculation
+        # Checkbox for toggling directory size calculation (next to Clear Cache)
         self.size_checkbox = tk.Checkbutton(self.button_frame, text="Show directory sizes", variable=self.show_dir_sizes, command=self.on_toggle_dir_sizes)
-        self.size_checkbox.pack(anchor='s', padx=10, side='left')
+        self.size_checkbox.grid(row=0, column=2, sticky='w', padx=10, pady=0)
 
         # Label for directory size display
         self.size_label = tk.Label(self, text="Directory size: ")
-        self.size_label.pack(anchor='nw', padx=10, pady=5)
+        self.size_label.grid(row=2, column=0, sticky='w', padx=10, pady=5)
 
         # Loading indicator
-        self.loading_label = tk.Label(self, text="", fg="blue")
-        self.loading_label.pack(anchor='nw', padx=10, pady=5)
+        self.loading_label = tk.Label(self, text="")
+        self.loading_label.grid(row=2, column=1, sticky='w', padx=10, pady=5)
 
         # File/Directory list
         self.tree = ttk.Treeview(self, columns=("size",), selectmode="extended")
@@ -269,12 +287,12 @@ class DiskCleanerApp(tk.Tk):
         self.tree.heading("size", text="Size (bytes)")
         self.tree.column("#0", width=400)
         self.tree.column("size", width=120, anchor='e')
-        self.tree.pack(fill='both', expand=True, padx=10, pady=5)
+        self.tree.grid(row=3, column=0, columnspan=2, sticky='nsew', padx=10, pady=5)
         self.tree.bind("<Double-1>", self.on_tree_double_click)
 
         # Delete button
         self.delete_btn = tk.Button(self, text="Delete selected items", command=self.on_delete)
-        self.delete_btn.pack(anchor='se', padx=10, pady=10)
+        self.delete_btn.grid(row=4, column=1, sticky='e', padx=10, pady=10)
 
     def show_edit_initial_dirs_dialog(self):
         # Method to display the edit dialog
@@ -539,25 +557,28 @@ class DiskCleanerApp(tk.Tk):
 
     def update_breadcrumbs(self):
         # Update breadcrumb navigation display
-        for widget in self.breadcrumb_frame.winfo_children():
+        for widget in self.breadcrumb_inner_frame.winfo_children():
             widget.destroy()
         if self.selected_dir is None:
             # Label for initial directories list view
-            lbl = tk.Label(self.breadcrumb_frame, text="Initial Directories", relief=tk.FLAT)
+            lbl = tk.Label(self.breadcrumb_inner_frame, text="Initial Directories", relief=tk.FLAT)
             lbl.pack(side='left')
+            self.breadcrumb_canvas.update_idletasks()
+            self.breadcrumb_canvas.configure(scrollregion=self.breadcrumb_canvas.bbox("all"))
             return
         else:
             # Button for initial directories list view
-            btn = tk.Button(self.breadcrumb_frame, text="Initial Directories", relief=tk.FLAT, command=lambda: self.on_breadcrumb_click(""))
+            btn = tk.Button(self.breadcrumb_inner_frame, text="Initial Directories", relief=tk.FLAT, command=lambda: self.on_breadcrumb_click(""))
             btn.pack(side='left')
-            sep = tk.Label(self.breadcrumb_frame, text=" > ")
+            sep = tk.Label(self.breadcrumb_inner_frame, text=" > ")
             sep.pack(side='left')
         home_dir = os.path.expanduser('~')
         # Breadcrumb navigation
         parts = []
         path = self.selected_dir
         matched_initial = ""
-        for initial in (MAC_INITIAL_DIRS if is_mac() else WINDOWS_INITIAL_DIRS):
+        initial_dirs = load_initial_dirs("mac" if is_mac() else "windows" if is_windows() else "other")
+        for initial in initial_dirs:
             if path == initial or path.startswith(initial + os.sep):
                 parts.append((initial, initial))
                 matched_initial = initial
@@ -580,14 +601,16 @@ class DiskCleanerApp(tk.Tk):
         for i, (name, full_path) in enumerate(parts):
             display_name = short_path(name)
             if i == len(parts) - 1:
-                lbl = tk.Label(self.breadcrumb_frame, text=display_name, relief=tk.FLAT)
+                lbl = tk.Label(self.breadcrumb_inner_frame, text=display_name, relief=tk.FLAT)
                 lbl.pack(side='left')
             else:
-                btn = tk.Button(self.breadcrumb_frame, text=display_name, relief=tk.FLAT, command=lambda p=full_path: self.on_breadcrumb_click(p))
+                btn = tk.Button(self.breadcrumb_inner_frame, text=display_name, relief=tk.FLAT, command=lambda p=full_path: self.on_breadcrumb_click(p))
                 btn.pack(side='left')
             if i < len(parts) - 1:
-                sep = tk.Label(self.breadcrumb_frame, text=" > ")
+                sep = tk.Label(self.breadcrumb_inner_frame, text=" > ")
                 sep.pack(side='left')
+        self.breadcrumb_canvas.update_idletasks()
+        self.breadcrumb_canvas.configure(scrollregion=self.breadcrumb_canvas.bbox("all"))
 
     def on_breadcrumb_click(self, path):
         # Navigate to the directory when breadcrumb is clicked

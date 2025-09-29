@@ -1,10 +1,15 @@
 {
     "cSpell.words": [
+        "columnspan",
         "hardlink",
+        "highlightthickness",
+        "LOCALAPPDATA",
         "ollama",
         "padx",
         "pady",
+        "scrollregion",
         "selectmode",
-        "tkinter"
+        "tkinter",
+        "xscrollcommand"
     ]
 }
