@@ -29,9 +29,33 @@ def init_admin_db():
             mtime INTEGER
         )
     """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS initial_directories (
+            platform TEXT NOT NULL,
+            dir TEXT NOT NULL,
+            PRIMARY KEY (platform, dir)
+        )
+    """)
     conn.commit()
     conn.close()
 init_admin_db()
+
+def load_initial_dirs(platform):
+    conn = sqlite3.connect(ADMIN_DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT dir FROM initial_directories WHERE platform=?", (platform,))
+    rows = c.fetchall()
+    conn.close()
+    return [row[0] for row in rows]
+
+def save_initial_dirs(platform, dirs):
+    conn = sqlite3.connect(ADMIN_DB_PATH)
+    c = conn.cursor()
+    c.execute("DELETE FROM initial_directories WHERE platform=?", (platform,))
+    for dir_path in dirs:
+        c.execute("INSERT INTO initial_directories (platform, dir) VALUES (?, ?)", (platform, dir_path))
+    conn.commit()
+    conn.close()
 
 # Initial candidate directories (for Mac)
 MAC_INITIAL_DIRS = [
@@ -219,13 +243,17 @@ class DiskCleanerApp(tk.Tk):
         self.button_frame = tk.Frame(self)
         self.button_frame.pack(anchor='nw', fill='x', padx=10, pady=5)
 
-        # Checkbox for toggling directory size calculation
-        self.size_checkbox = tk.Checkbutton(self.button_frame, text="Show directory sizes", variable=self.show_dir_sizes, command=self.on_toggle_dir_sizes)
-        self.size_checkbox.pack(anchor='s', side='left')
+        # Edit Initial Directories button (right of Clear Cache)
+        self.edit_initial_dirs_btn = tk.Button(self.button_frame, text="Edit Initial Directories", command=self.show_edit_initial_dirs_dialog)
+        self.edit_initial_dirs_btn.pack(anchor='s', side='left')
 
         # Clear Cache button (right of Show directory sizes)
         self.clear_cache_btn = tk.Button(self.button_frame, text="Clear Cache", command=self.on_clear_cache)
         self.clear_cache_btn.pack(anchor='s', padx=10, side='left')
+
+        # Checkbox for toggling directory size calculation
+        self.size_checkbox = tk.Checkbutton(self.button_frame, text="Show directory sizes", variable=self.show_dir_sizes, command=self.on_toggle_dir_sizes)
+        self.size_checkbox.pack(anchor='s', padx=10, side='left')
 
         # Label for directory size display
         self.size_label = tk.Label(self, text="Directory size: ")
@@ -248,6 +276,49 @@ class DiskCleanerApp(tk.Tk):
         self.delete_btn = tk.Button(self, text="Delete selected items", command=self.on_delete)
         self.delete_btn.pack(anchor='se', padx=10, pady=10)
 
+    def show_edit_initial_dirs_dialog(self):
+        # Method to display the edit dialog
+        dialog = tk.Toplevel(self)
+        dialog.title("Edit Initial Directories")
+        dialog.geometry("500x400")
+        dialog.transient(self)
+        dialog.grab_set()
+
+        # Platform detection
+        if is_mac():
+            platform_name = "mac"
+        elif is_windows():
+            platform_name = "windows"
+        else:
+            platform_name = "other"
+
+        # Get current list
+        dirs = load_initial_dirs(platform_name)
+        # Text box
+        text_box = tk.Text(dialog, wrap="none")
+        text_box.pack(fill="both", expand=True, padx=10, pady=10)
+        text_box.insert("1.0", "\n".join(dirs))
+
+        # Button frame
+        btn_frame = tk.Frame(dialog)
+        btn_frame.pack(fill="x", padx=10, pady=5)
+
+        def on_save():
+            new_dirs = text_box.get("1.0", "end").strip().splitlines()
+            # Remove empty lines
+            new_dirs = [d for d in new_dirs if d.strip()]
+            save_initial_dirs(platform_name, new_dirs)
+            dialog.destroy()
+            self.refresh_initial_dirs()
+
+        def on_cancel():
+            dialog.destroy()
+
+        save_btn = tk.Button(btn_frame, text="Save", command=on_save)
+        save_btn.pack(side="left", padx=5)
+        cancel_btn = tk.Button(btn_frame, text="Cancel", command=on_cancel)
+        cancel_btn.pack(side="left", padx=5)
+
     def on_clear_cache(self):
         # Clear cache in SQLite DB
         import sqlite3
@@ -258,14 +329,11 @@ class DiskCleanerApp(tk.Tk):
             conn.commit()
             conn.close()
         except Exception:
-            pass
             conn = sqlite3.connect(ADMIN_DB_PATH)
             c = conn.cursor()
             c.execute("DELETE FROM dir_size_cache")
             conn.commit()
             conn.close()
-        except Exception:
-            pass
         # Refresh UI after clearing cache
         if self.selected_dir is None:
             self.refresh_initial_dirs()
@@ -275,12 +343,22 @@ class DiskCleanerApp(tk.Tk):
     def refresh_initial_dirs(self):
         if self.loading:
             return  # Prevent double loading
+        # Platform detection
         if is_mac():
-            dirs = MAC_INITIAL_DIRS
+            platform_name = "mac"
+            default_dirs = MAC_INITIAL_DIRS
         elif is_windows():
-            dirs = WINDOWS_INITIAL_DIRS
+            platform_name = "windows"
+            default_dirs = WINDOWS_INITIAL_DIRS
         else:
-            dirs = []
+            platform_name = "other"
+            default_dirs = []
+        # Get list from DB
+        dirs = load_initial_dirs(platform_name)
+        # If no list in DB, save default values
+        if not dirs:
+            save_initial_dirs(platform_name, default_dirs)
+            dirs = list(default_dirs)
         self.selected_dir = None
         self.dir_entries = []
         self.tree.delete(*self.tree.get_children())
