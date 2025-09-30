@@ -250,6 +250,8 @@ class DiskCleanerApp(tk.Tk):
         self.selected_items = set()
         self.loading = False
         self.show_dir_sizes = tk.BooleanVar(value=False)
+        self.sort_column = None
+        self.sort_reverse = False
         self.create_widgets()
         self.refresh_initial_dirs()
         self.update_breadcrumbs()
@@ -338,8 +340,14 @@ class DiskCleanerApp(tk.Tk):
 
         # File/Directory list
         self.tree = ttk.Treeview(self, columns=("size",), selectmode="extended")
-        self.tree.heading("#0", text="Name")
-        self.tree.heading("size", text="Size (bytes)")
+        self.tree.heading(
+            "#0", text="Name", command=lambda: self.on_tree_heading_click("name")
+        )
+        self.tree.heading(
+            "size",
+            text="Size (bytes)",
+            command=lambda: self.on_tree_heading_click("size"),
+        )
         self.tree.column("#0", width=400)
         self.tree.column("size", width=120, anchor="e")
         self.tree.grid(row=3, column=0, columnspan=2, sticky="nsew", padx=10, pady=5)
@@ -646,6 +654,30 @@ class DiskCleanerApp(tk.Tk):
             self.refresh_initial_dirs()
         else:
             self.start_refresh_dir_view()
+
+    def on_tree_heading_click(self, column):
+        # Sort when column header is clicked
+        if self.sort_column == column:
+            self.sort_reverse = not self.sort_reverse
+        else:
+            self.sort_column = column
+            self.sort_reverse = False
+        # Execute sorting
+        if column == "name":
+            entries = sorted(
+                self.dir_entries,
+                key=lambda e: e["name"].lower(),
+                reverse=self.sort_reverse,
+            )
+        elif column == "size":
+            entries = sorted(
+                self.dir_entries,
+                key=lambda e: (e["size"] if isinstance(e["size"], int) else 0),
+                reverse=self.sort_reverse,
+            )
+        else:
+            entries = self.dir_entries
+        self._update_dir_view_ui(entries)
 
     def on_tree_double_click(self, event):
         item_id = self.tree.focus()
