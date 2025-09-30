@@ -1,3 +1,4 @@
+import enum
 import os
 import shutil
 import sqlite3
@@ -73,46 +74,87 @@ def save_initial_dirs(platform, dirs):
     conn.close()
 
 
-# Initial candidate directories (for Mac)
-MAC_INITIAL_DIRS = [
-    os.path.expanduser("~/Library/Caches"),
-    os.path.expanduser("~/Library/Logs"),
-    os.path.expanduser("~/Library/Application Support"),
-    os.path.expanduser("~/Library/Containers"),
-    os.path.expanduser("~/Downloads"),
-    os.path.expanduser("~/.ollama"),
-    "/Library/Caches",
-    "/Library/Logs",
-    "/Library/Application Support",
-    "/System/Library/Caches",
-    "/System/Library/Logs",
-    "/System/Library/Application Support",
-    "/private/var/folders",
-    "/private/var/log",
-    "/private/var/tmp",
-    "/private/var/vm",
-    "/private/tmp",
-    "/private/vm",
-    "/Applications",
-]
+def get_platform_name() -> str:
+    if is_mac():
+        return "mac"
+    elif is_windows():
+        return "windows"
+    else:
+        return "other"
 
-WINDOWS_INITIAL_DIRS = [
-    r"C:\Windows\Temp",
-    r"C:\ProgramData",
-    r"C:\System Volume Information",
-    r"C:\Windows\SoftwareDistribution\Download",
-    r"C:\Cygwin64\var\cache\setup",
-    os.path.expanduser(r"~\AppData\Local\Temp"),
-    os.path.expanduser("~\\AppData\\Local\\Packages"),
-    os.path.expanduser("~\\AppData\\Local\\pip\\Cache"),
-    os.path.expanduser("~\\AppData\\Local\\npm-cache"),
-    os.path.expanduser("~\\AppData\\Roaming\\Code\\Cache"),
-    os.path.expanduser("~\\AppData\\Roaming\\Code\\Backups"),
-    os.path.expanduser(
-        "~\\AppData\\Local\\BraveSoftware\\Brave-Browser\\User Data\\Default\\Cache"
-    ),
-    os.path.expanduser("~\\.ollama"),
-]
+
+class ResetKind(enum.Enum):
+    ROOT = "root"
+    USER = "user"
+    CACHE = "cache"
+
+
+def get_mac_initial_dirs(kind: ResetKind) -> list[str]:
+    if kind == ResetKind.ROOT:
+        return [os.path.join("/", d) for d in os.listdir("/")]
+    elif kind == ResetKind.USER:
+        return [
+            os.path.join(os.path.expanduser("~"), d)
+            for d in os.listdir(os.path.expanduser("~"))
+        ]
+    elif kind == ResetKind.CACHE:
+        return [
+            os.path.expanduser("~/Library/Caches"),
+            os.path.expanduser("~/Library/Logs"),
+            os.path.expanduser("~/Library/Application Support"),
+            os.path.expanduser("~/Library/Containers"),
+            os.path.expanduser("~/Downloads"),
+            os.path.expanduser("~/.ollama"),
+            "/Library/Caches",
+            "/Library/Logs",
+            "/Library/Application Support",
+            "/System/Library/Caches",
+            "/System/Library/Logs",
+            "/System/Library/Application Support",
+            "/private/var/folders",
+            "/private/var/log",
+            "/private/var/tmp",
+            "/private/var/vm",
+            "/private/tmp",
+            "/private/vm",
+        ]
+
+
+def get_windows_initial_dirs(kind: ResetKind) -> list[str]:
+    if kind == ResetKind.ROOT:
+        return [os.path.join("C:\\", d) for d in os.listdir("C:\\")]
+    elif kind == ResetKind.USER:
+        return [
+            os.path.join(os.path.expanduser("~"), d)
+            for d in os.listdir(os.path.expanduser("~"))
+        ]
+    elif kind == ResetKind.CACHE:
+        return [
+            r"C:\Cygwin64\var\cache\setup",
+            r"C:\ProgramData",
+            r"C:\System Volume Information",
+            r"C:\Windows\SoftwareDistribution\Download",
+            r"C:\Windows\Temp",
+            os.path.expanduser("~\\.ollama"),
+            os.path.expanduser(r"~\AppData\Local\Temp"),
+            os.path.expanduser("~\\AppData\\Local\\Packages"),
+            os.path.expanduser("~\\AppData\\Local\\pip\\Cache"),
+            os.path.expanduser("~\\AppData\\Local\\npm-cache"),
+            os.path.expanduser("~\\AppData\\Roaming\\Code\\Cache"),
+            os.path.expanduser("~\\AppData\\Roaming\\Code\\Backups"),
+            os.path.expanduser(
+                "~\\AppData\\Local\\BraveSoftware\\Brave-Browser\\User Data\\Default\\Cache"
+            ),
+        ]
+
+
+def get_default_initial_dirs(kind: ResetKind) -> list[str]:
+    if is_mac():
+        return get_mac_initial_dirs(kind)
+    elif is_windows():
+        return get_windows_initial_dirs(kind)
+    else:
+        return []
 
 
 def is_mac():
@@ -416,18 +458,31 @@ class DiskCleanerApp(tk.Tk):
         cancel_btn = tk.Button(btn_frame, text="Cancel", command=on_cancel)
         cancel_btn.pack(side="left", padx=5)
 
-        def on_reset():
-            if is_mac():
-                default_dirs = MAC_INITIAL_DIRS
-            elif is_windows():
-                default_dirs = WINDOWS_INITIAL_DIRS
-            else:
-                default_dirs = []
+        def on_reset(kind: ResetKind):
+            default_dirs = get_default_initial_dirs(kind)
             text_box.delete("1.0", "end")
             text_box.insert("1.0", "\n".join(default_dirs))
 
-        reset_btn = tk.Button(btn_frame, text="Reset", command=on_reset)
-        reset_btn.pack(side="left", padx=5)
+        reset_by_root_btn = tk.Button(
+            btn_frame,
+            text="Reset by root dir",
+            command=lambda: on_reset(ResetKind.ROOT),
+        )
+        reset_by_root_btn.pack(side="left", padx=5)
+
+        reset_by_user_btn = tk.Button(
+            btn_frame,
+            text="Reset by user dirs",
+            command=lambda: on_reset(ResetKind.USER),
+        )
+        reset_by_user_btn.pack(side="left", padx=5)
+
+        reset_by_cache_btn = tk.Button(
+            btn_frame,
+            text="Reset by cache dirs",
+            command=lambda: on_reset(ResetKind.CACHE),
+        )
+        reset_by_cache_btn.pack(side="left", padx=5)
 
     def on_clear_cache(self):
         # Clear cache in SQLite DB
@@ -454,22 +509,9 @@ class DiskCleanerApp(tk.Tk):
     def refresh_initial_dirs(self):
         if self.loading:
             return  # Prevent double loading
-        # Platform detection
-        if is_mac():
-            platform_name = "mac"
-            default_dirs = MAC_INITIAL_DIRS
-        elif is_windows():
-            platform_name = "windows"
-            default_dirs = WINDOWS_INITIAL_DIRS
-        else:
-            platform_name = "other"
-            default_dirs = []
         # Get list from DB
-        dirs = load_initial_dirs(platform_name)
+        dirs = load_initial_dirs(get_platform_name())
         # If no list in DB, save default values
-        if not dirs:
-            save_initial_dirs(platform_name, default_dirs)
-            dirs = list(default_dirs)
         self.selected_dir = None
         self.dir_entries = []
         self.tree.delete(*self.tree.get_children())
