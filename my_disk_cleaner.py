@@ -440,57 +440,52 @@ class DiskCleanerApp(tk.Tk):
         import multiprocessing
         self._queue = multiprocessing.Queue()
         # Pass a single directory as a list
-        self._process = multiprocessing.Process(target=DiskCleanerApp._get_entries_process, args=([self.selected_dir], self._queue, self.show_dir_sizes.get()))
+        self._process = multiprocessing.Process(target=DiskCleanerApp._get_entries_process, args=(self.selected_dir, self._queue, self.show_dir_sizes.get()))
         self._process.start()
         self.after(100, self._poll_queue)
 
     @staticmethod
-    def _get_entries_process(targets, queue, show_dir_sizes=True):
+    def _get_entries_process(target_or_targets, queue, show_dir_sizes=True):
         """
-        targets: list of directory paths
+        targets: directory path or list of directory paths
+        queue: multiprocessing.Queue for inter-process communication
         show_dir_sizes: bool
         """
-        import os
+        if isinstance(target_or_targets, str):
+            target_path = target_or_targets
+            target_paths = [os.path.join(target_path, c) for c in os.listdir(target_path)]
+            sets_name_to_path = False
+        else:
+            target_paths = target_or_targets
+            sets_name_to_path = True
         entries = []
-        for dir_path in targets:
-            queue.put(("progress", dir_path))
-            if not dir_path or not os.path.exists(dir_path):
+        for target_path in target_paths:
+            queue.put(("progress", target_path))
+            if not target_path or not os.path.exists(target_path):
                 continue
             # Check if the path is a directory
-            if os.path.isdir(dir_path):
+            if os.path.isdir(target_path):
                 # Get the list of items under the directory
                 try:
-                    with os.scandir(dir_path) as it:
-                        for entry in it:
-                            if os.path.islink(entry.path) or is_windows_hardlink(entry.path):
-                                continue
-                            if entry.is_file():
-                                size = entry.stat().st_size if show_dir_sizes else "-"
-                            elif entry.is_dir():
-                                try:
-                                    size = get_dir_size(entry.path, queue) if show_dir_sizes else "-"
-                                except Exception:
-                                    size = 0 if show_dir_sizes else "-"
-                            else:
-                                size = "-"
-                            entry_dict = {
-                                'name': entry.name,
-                                'path': entry.path,
-                                'is_dir': entry.is_dir(),
-                                'size': size
-                            }
-                            entries.append(entry_dict)
+                    size = get_dir_size(target_path, queue) if show_dir_sizes else "-"
                 except Exception:
-                    pass
+                    size = 0 if show_dir_sizes else "-"
+                entry_dict = {
+                    'name': target_path if sets_name_to_path else os.path.basename(target_path),
+                    'path': target_path,
+                    'is_dir': True,
+                    'size': size
+                }
+                entries.append(entry_dict)
             else:
                 # If it is a single file
                 try:
-                    size = os.path.getsize(dir_path) if show_dir_sizes else "-"
+                    size = os.path.getsize(target_path) if show_dir_sizes else "-"
                 except Exception:
                     size = 0 if show_dir_sizes else "-"
                 entry = {
-                    'name': os.path.basename(dir_path),
-                    'path': dir_path,
+                    'name': os.path.basename(target_path),
+                    'path': target_path,
                     'is_dir': False,
                     'size': size
                 }
