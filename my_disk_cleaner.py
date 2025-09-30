@@ -348,6 +348,19 @@ class DiskCleanerApp(tk.Tk):
         cancel_btn = tk.Button(btn_frame, text="Cancel", command=on_cancel)
         cancel_btn.pack(side="left", padx=5)
 
+        def on_reset():
+            if is_mac():
+                default_dirs = MAC_INITIAL_DIRS
+            elif is_windows():
+                default_dirs = WINDOWS_INITIAL_DIRS
+            else:
+                default_dirs = []
+            text_box.delete("1.0", "end")
+            text_box.insert("1.0", "\n".join(default_dirs))
+
+        reset_btn = tk.Button(btn_frame, text="Reset", command=on_reset)
+        reset_btn.pack(side="left", padx=5)
+
     def on_clear_cache(self):
         # Clear cache in SQLite DB
         import sqlite3
