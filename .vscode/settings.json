@@ -1,4 +1,15 @@
 {
+    "[python]": {
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": "always"
+        },
+        "editor.defaultFormatter": "ms-python.black-formatter",
+        "editor.formatOnSave": true
+    },
+    "isort.args": [
+        "--profile",
+        "black"
+    ],
     "cSpell.words": [
         "columnspan",
         "hardlink",
