@@ -419,7 +419,7 @@ class DiskCleanerApp(tk.Tk):
         # Method to display the edit dialog
         dialog = tk.Toplevel(self)
         dialog.title("Edit Initial Directories")
-        dialog.geometry("500x400")
+        dialog.geometry("650x400")
         dialog.transient(self)
         dialog.grab_set()
 
