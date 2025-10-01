@@ -207,26 +207,55 @@ def get_dir_size(path, queue=None):
     if size is not None:
         return size
     # If cache is missing or mtime is different, recalculate
+    # Dictionary for aggregating directory sizes
+    dir_sizes = {}
     total = 0
     count = 0
     for root, dirs, files in os.walk(path):
         for f in files:
             try:
                 fp = os.path.join(root, f)
-                # Exclude symbolic links from size calculation
+                # Exclude symbolic links and Windows hard links
                 if os.path.islink(fp) or is_windows_hardlink(fp):
                     continue
+                size = os.path.getsize(fp)
                 count += 1
                 if queue is not None and count % 100 == 0:
                     queue.put(("progress", fp))
-                total += os.path.getsize(fp)
+                # Add size to each ancestor directory
+                ancestor = fp
+                ancestors = []
+                while True:
+                    ancestor = os.path.dirname(ancestor)
+                    if ancestor.startswith(path):
+                        ancestors.append(ancestor)
+                        if ancestor == path:
+                            break
+                    else:
+                        break
+                for dir_path in ancestors:
+                    dir_sizes[dir_path] = dir_sizes.get(dir_path, 0) + size
+                total += size
             except Exception:
                 pass
-    # Save calculation result to cache
+    # Update cache in a single transaction
     if mtime is not None:
         try:
             conn = sqlite3.connect(ADMIN_DB_PATH)
             c = conn.cursor()
+            # Cache the size of each directory
+            for dir_path, size in dir_sizes.items():
+                dir_mtime = None
+                try:
+                    dir_mtime = int(os.path.getmtime(dir_path))
+                except Exception:
+                    dir_mtime = None
+                if dir_mtime is not None:
+                    c.execute(
+                        "INSERT OR REPLACE INTO dir_size_cache (path, size, mtime) VALUES (?, ?, ?)",
+                        (dir_path, size, dir_mtime),
+                    )
+            # Also cache (path, total, mtime) in the same transaction
             c.execute(
                 "INSERT OR REPLACE INTO dir_size_cache (path, size, mtime) VALUES (?, ?, ?)",
                 (path, total, mtime),
