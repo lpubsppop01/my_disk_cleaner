@@ -121,24 +121,13 @@ def get_mac_preset_target_directories(kind: PresetTargetDirectoryListKind) -> li
         ]
     elif kind == PresetTargetDirectoryListKind.CACHE:
         return [
-            os.path.expanduser("~/Library/Caches"),
-            os.path.expanduser("~/Library/Logs"),
-            os.path.expanduser("~/Library/Application Support"),
-            os.path.expanduser("~/Library/Containers"),
+            os.path.expanduser("~/Desktop"),
             os.path.expanduser("~/Downloads"),
-            os.path.expanduser("~/.ollama"),
-            "/Library/Caches",
-            "/Library/Logs",
-            "/Library/Application Support",
-            "/System/Library/Caches",
-            "/System/Library/Logs",
-            "/System/Library/Application Support",
-            "/private/var/folders",
-            "/private/var/log",
-            "/private/var/tmp",
-            "/private/var/vm",
-            "/private/tmp",
-            "/private/vm",
+            os.path.expanduser("~/Library/Application Support"),
+            os.path.expanduser("~/Library/Caches"),
+            os.path.expanduser("~/Library/Containers"),
+            os.path.expanduser("~/Library/Developer"),
+            os.path.expanduser("~/Library/Logs"),
         ]
 
 
@@ -155,21 +144,16 @@ def get_windows_preset_target_directories(
         ]
     elif kind == PresetTargetDirectoryListKind.CACHE:
         return [
-            r"C:\Cygwin64\var\cache\setup",
+            os.path.expanduser(r"~\AppData\Local\npm-cache"),
+            os.path.expanduser(r"~\AppData\Local\Packages"),
+            os.path.expanduser(r"~\AppData\Local\pip\Cache"),
+            os.path.expanduser(r"~\AppData\Local\Temp"),
+            os.path.expanduser(r"~\AppData\Roaming\Code\Backups"),
+            os.path.expanduser(r"~\AppData\Roaming\Code\Cache"),
+            r"C:\cygwin64\var\cache\setup",
             r"C:\ProgramData",
-            r"C:\System Volume Information",
             r"C:\Windows\SoftwareDistribution\Download",
             r"C:\Windows\Temp",
-            os.path.expanduser("~\\.ollama"),
-            os.path.expanduser(r"~\AppData\Local\Temp"),
-            os.path.expanduser("~\\AppData\\Local\\Packages"),
-            os.path.expanduser("~\\AppData\\Local\\pip\\Cache"),
-            os.path.expanduser("~\\AppData\\Local\\npm-cache"),
-            os.path.expanduser("~\\AppData\\Roaming\\Code\\Cache"),
-            os.path.expanduser("~\\AppData\\Roaming\\Code\\Backups"),
-            os.path.expanduser(
-                "~\\AppData\\Local\\BraveSoftware\\Brave-Browser\\User Data\\Default\\Cache"
-            ),
         ]
 
 
