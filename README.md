@@ -1,28 +1,24 @@
 # My Disk Cleaner
 
-**my_disk_cleaner** is a cross-platform disk cleaning application for Windows and Mac, designed to help users identify and remove unnecessary files that accumulate during regular system use.
+**My Disk Cleaner** is a cross-platform disk cleanup application for Windows and Mac. It helps you easily find and delete unnecessary files and directories to free up disk space efficiently.
 
 ## Features
 
-- **Platform Support:** Windows and Mac
-- **Purpose:** Check and delete files that waste disk space, tailored to typical directories that grow over time on each OS.
-- **GUI Desktop Application:** Built with Python and tkinter, providing an intuitive graphical interface.
-- **Easy Setup:** Runs on standard Python environments; no external dependencies required for basic usage.
-- **Smart Directory Selection:** Automatically selects initial target directories based on OS characteristics:
-  - **Mac:** `~/Library/Caches` (commonly grows large)
-  - **Windows:** `AppData/Local` (frequently accumulates unnecessary files)
-- **Usage Overview:**
-  - Displays the disk usage of the initial target directory.
-  - Allows users to inspect subdirectories and files for more detailed analysis.
-  - Enables selection and deletion of files and directories directly from the app.
-- **Windows-Specific Considerations:** Handles hard links appropriately to avoid double-counting disk usage and ensure accurate space recovery.
+- **Cross-platform:** Works on both Windows and Mac
+- **GUI Desktop Application:** Intuitive interface built with Python and tkinter
+- **Target Directory Management:** Uses a local SQLite database to manage target directories and cache directory sizes
+- **Preset Selection:** Easily select preset directories ("root", "user", "cache") for each OS with a single click
+- **Directory Size Display:** Toggle directory size calculation with a checkbox; clear the size cache with a button
+- **Multiprocessing for Performance:** Directory size calculation and file listing are performed in the background for fast and responsive UI
+- **Windows Hard Link Support:** Avoids double-counting disk usage for accurate space calculation
+- **No External Dependencies:** Runs with only the Python standard library (Python 3.11+ recommended for StrEnum support)
 
-## Getting Started
+## Usage
 
-1. **Requirements:**  
-   - Python 3.x (standard installation)
-2. **Installation:**  
-   - Clone this repository:
+1. **Requirements**  
+   - Python 3.11 or later (StrEnum is used)
+2. **Installation**  
+   - Clone the repository:
      ```
      git clone https://github.com/lpubsppop01/my_disk_cleaner.git
      ```
@@ -30,15 +26,36 @@
      ```
      python my_disk_cleaner.py
      ```
-3. **Usage:**  
-   - On launch, the app will display the size of the default target directory for your OS.
-   - Browse, inspect, and select files or directories to delete as needed.
+3. **Basic Operations**  
+   - On launch, the app displays a list of preset target directories for your OS
+   - Use the "Edit Target Directories" button to modify the target directories
+   - Switch presets easily with "Reset by root dir", "Reset by user dirs", or "Reset by cache dirs" buttons
+   - Toggle "Show directory sizes" to enable/disable size calculation
+   - Use the "Clear Cache" button to clear cached directory sizes
+   - Select files or directories and click "Delete Selected Items" to remove them
+   - Navigate directory hierarchy using the breadcrumb navigation
+
+## Preset Directory Examples
+
+- **Mac**
+  - root: All directories under `/`
+  - user: All directories under `~/`
+  - cache: `~/Desktop`, `~/Downloads`, `~/Library/Application Support`, `~/Library/Caches`, etc.
+- **Windows**
+  - root: All directories under `C:\`
+  - user: All directories under `~\`
+  - cache: `~\AppData\Local\npm-cache`, `~\AppData\Local\Packages`, `~\AppData\Local\Temp`, `C:\Windows\Temp`, etc.
+
+## About the Database
+
+- The management SQLite database (`admin.db`) is automatically created and stores target directories and cached directory sizes
+- The database is located in the user's local environment (Windows: under `LOCALAPPDATA`, Mac: under `~/.lpubsppop01_my_disk_cleaner`)
 
 ## Author
 
-- **Name:** lpubsppop01
-- **Email:** lpubsppop01@gmail.com
+[lpubsppop01](https://github.com/lpubsppop01)
 
 ## License
 
-License to be decided.
+[zlib License](https://github.com/lpubsppop01/my_disk_cleaner/raw/master/LICENSE.txt)
+
