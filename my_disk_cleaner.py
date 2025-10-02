@@ -9,7 +9,7 @@ import tkinter.font
 from tkinter import messagebox, ttk
 
 
-def get_admin_db_path():
+def get_admin_db_path() -> str:
     """Get the path to the admin SQLite database."""
     if sys.platform.startswith("win"):
         local_appdata = os.environ.get(
@@ -25,7 +25,7 @@ ADMIN_DB_PATH = get_admin_db_path()
 """Path to the admin SQLite database."""
 
 
-def init_admin_db():
+def init_admin_db() -> None:
     """Initialize the admin SQLite database."""
     os.makedirs(os.path.dirname(ADMIN_DB_PATH), exist_ok=True)
     conn = sqlite3.connect(ADMIN_DB_PATH)
@@ -52,7 +52,15 @@ def init_admin_db():
     conn.close()
 
 
-def load_target_directories(platform):
+class Platform(enum.StrEnum):
+    """Enumeration of supported platforms."""
+
+    MAC = "mac"
+    WINDOWS = "windows"
+    OTHER = "other"
+
+
+def load_target_directories(platform: Platform) -> list[str]:
     """Load target directories for the given platform from the database."""
     conn = sqlite3.connect(ADMIN_DB_PATH)
     c = conn.cursor()
@@ -62,7 +70,7 @@ def load_target_directories(platform):
     return [row[0] for row in rows]
 
 
-def save_target_directories(platform, dirs):
+def save_target_directories(platform: Platform, dirs: list[str]) -> None:
     """Save target directories for the given platform to the database."""
     conn = sqlite3.connect(ADMIN_DB_PATH)
     c = conn.cursor()
@@ -76,19 +84,11 @@ def save_target_directories(platform, dirs):
     conn.close()
 
 
-class Platform(enum.StrEnum):
-    """Enumeration of supported platforms."""
-
-    MAC = "mac"
-    WINDOWS = "windows"
-    OTHER = "other"
-
-
-def is_mac():
+def is_mac() -> bool:
     return sys.platform == "darwin"
 
 
-def is_windows():
+def is_windows() -> bool:
     return sys.platform.startswith("win")
 
 
@@ -183,7 +183,7 @@ def get_preset_target_directories(kind: PresetTargetDirectoryListKind) -> list[s
         return []
 
 
-def is_windows_hardlink(path) -> bool:
+def is_windows_hardlink(path: str) -> bool:
     """Check if the given path is a Windows hard link."""
     if not is_windows():
         return False
@@ -201,7 +201,13 @@ def is_windows_hardlink(path) -> bool:
         return False
 
 
-def get_directory_size(path, queue=None):
+def get_directory_size(
+    path: str,
+    queue: (
+        multiprocessing.Queue[tuple[str, str] | tuple[str, list[dict[str, object]]]]
+        | None
+    ) = None,
+) -> int:
     """Get the size of a directory, using cache if available."""
     # Get mtime of the directory
     mtime = None
@@ -213,7 +219,7 @@ def get_directory_size(path, queue=None):
         return 0
 
     # Try to get cached size if mtime is available
-    size = None
+    size: int | None = None
     try:
         conn = sqlite3.connect(ADMIN_DB_PATH)
         c = conn.cursor()
@@ -228,7 +234,7 @@ def get_directory_size(path, queue=None):
         return size
 
     # If cache is missing or mtime is different, recalculate
-    dir_path_to_size = {}
+    dir_path_to_size: dict[str, int] = {}
     total_size = 0
     total_count = 0
     for root, dirs, files in os.walk(path):
@@ -298,7 +304,7 @@ def get_directory_size(path, queue=None):
     return total_size
 
 
-def delete_items(items):
+def delete_items(items: list[str]) -> None:
     """Delete the specified files and directories."""
     for item in items:
         try:
@@ -313,36 +319,37 @@ def delete_items(items):
 class DiskCleanerApp(tk.Tk):
     """Main application class for the disk cleaner."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the main application window and its components."""
         super().__init__()
         self.title("My Disk Cleaner")
         self.geometry("800x600")
-        self.selected_dir_path = None
-        self.dir_entries = []
-        self.selected_items = set()
-        self.loading = False
-        self.show_dir_sizes = tk.BooleanVar(value=False)
-        self.sort_column = None
-        self.sort_reverse = False
+        self.selected_dir_path: str | None = None
+        self.dir_entries: list[dict[str, object]] = []
+        self.selected_items: set[str] = set()
+        self.loading: bool = False
+        self.show_dir_sizes: tk.BooleanVar = tk.BooleanVar(value=False)
+        self.sort_column: str | None = None
+        self.sort_reverse: bool = False
+        self._queue: multiprocessing.Queue[str] | None = None
         self.create_widgets()
         self.refresh_list_view_by_target_dirs()
         self.update_breadcrumbs()
 
     @staticmethod
-    def get_display_name(entry):
+    def get_display_name(entry: dict[str, object]) -> str:
         """Get the display name for a file or directory entry."""
         # Add separator at the end of directory names
         if entry.get("is_dir", False):
             sep = "\\" if is_windows() else "/"
-            name = entry["name"]
+            name = str(entry["name"])
             # Add separator only if not already present
             if not name.endswith(sep):
                 name += sep
             return name
-        return entry["name"]
+        return str(entry["name"])
 
-    def create_widgets(self):
+    def create_widgets(self) -> None:
         """Create and layout the widgets in the main application window."""
         # Configure grid weights for main window
         self.grid_rowconfigure(3, weight=1)
@@ -434,7 +441,7 @@ class DiskCleanerApp(tk.Tk):
         )
         self.delete_btn.grid(row=4, column=1, sticky="e", padx=10, pady=10)
 
-    def set_status_text(self, text):
+    def set_status_text(self, text: str) -> None:
         """Set the status text, truncating if necessary to fit the label width."""
         label_width = self.status_label.winfo_width()
         font = tkinter.font.Font(font=self.status_label.cget("font"))
@@ -447,7 +454,7 @@ class DiskCleanerApp(tk.Tk):
             text = text[: max_len - 3] + "..."
         self.status_label.config(text=text)
 
-    def show_edit_target_directory_list_dialog(self):
+    def show_edit_target_directory_list_dialog(self) -> None:
         """Show a dialog to edit the list of target directories."""
         # Dialog window
         dialog = tk.Toplevel(self)
@@ -468,7 +475,7 @@ class DiskCleanerApp(tk.Tk):
         btn_frame = tk.Frame(dialog)
         btn_frame.pack(fill="x", padx=10, pady=5)
 
-        def on_save():
+        def on_save() -> None:
             """Save the edited list of target directories."""
             new_dirs = text_box.get("1.0", "end").strip().splitlines()
             # Remove empty lines
@@ -477,7 +484,7 @@ class DiskCleanerApp(tk.Tk):
             dialog.destroy()
             self.refresh_list_view_by_target_dirs()
 
-        def on_cancel():
+        def on_cancel() -> None:
             """Cancel editing and close the dialog."""
             dialog.destroy()
 
@@ -487,7 +494,7 @@ class DiskCleanerApp(tk.Tk):
         cancel_btn = tk.Button(btn_frame, text="Cancel", command=on_cancel)
         cancel_btn.pack(side="left", padx=5)
 
-        def on_reset(kind: PresetTargetDirectoryListKind):
+        def on_reset(kind: PresetTargetDirectoryListKind) -> None:
             """Reset the text box to preset target directories based on the specified kind."""
             default_dirs = get_preset_target_directories(kind)
             text_box.delete("1.0", "end")
@@ -513,7 +520,7 @@ class DiskCleanerApp(tk.Tk):
         )
         reset_by_cache_btn.pack(side="left", padx=5)
 
-    def on_clear_cache(self):
+    def on_clear_cache(self) -> None:
         """Clear the directory size cache."""
         try:
             conn = sqlite3.connect(ADMIN_DB_PATH)
@@ -530,7 +537,7 @@ class DiskCleanerApp(tk.Tk):
         else:
             self.refresh_list_view_by_child_items()
 
-    def refresh_list_view_by_target_dirs(self):
+    def refresh_list_view_by_target_dirs(self) -> None:
         """Refresh the list view to show the initial target directories."""
         # Prevent double loading
         if self.loading:
@@ -560,7 +567,7 @@ class DiskCleanerApp(tk.Tk):
         else:
             # Just list directories without sizes
             for dir_path in dirs:
-                entry = {
+                entry: dict[str, object] = {
                     "name": dir_path,
                     "path": dir_path,
                     "is_dir": True,
@@ -571,7 +578,7 @@ class DiskCleanerApp(tk.Tk):
                 self.tree.insert(
                     "",
                     "end",
-                    iid=dir_path,
+                    iid=str(dir_path),
                     text=display_name,
                     values=("-",),
                     tags=("dir",),
@@ -584,7 +591,7 @@ class DiskCleanerApp(tk.Tk):
             self.set_status_text("Directory size: -")
         self.delete_btn.config(state="disabled")
 
-    def refresh_list_view_by_child_items(self):
+    def refresh_list_view_by_child_items(self) -> None:
         """Refresh the list view to show items under the selected directory."""
         # Prevent double loading
         if self.loading:
@@ -606,7 +613,13 @@ class DiskCleanerApp(tk.Tk):
         self.after(100, self._poll_queue)
 
     @staticmethod
-    def _get_entries_process(target_or_targets, queue, show_dir_sizes=True):
+    def _get_entries_process(
+        target_or_targets: str | list[str],
+        queue: multiprocessing.Queue[
+            tuple[str, str] | tuple[str, list[dict[str, object]]]
+        ],
+        show_dir_sizes: bool = True,
+    ) -> None:
         """Get file and directory entries under the specified target directory or directories.
 
         targets: directory path or list of directory paths
@@ -625,7 +638,7 @@ class DiskCleanerApp(tk.Tk):
             sets_name_to_path = True
 
         # List entries
-        entries = []
+        entries: list[dict[str, object]] = []
         for target_path in target_paths:
             # Report progress
             queue.put(("progress", target_path))
@@ -645,7 +658,7 @@ class DiskCleanerApp(tk.Tk):
                     )
                 except Exception:
                     size = 0 if show_dir_sizes else "-"
-                entry_dict = {
+                entry_dict: dict[str, object] = {
                     "name": (
                         target_path
                         if sets_name_to_path
@@ -662,7 +675,7 @@ class DiskCleanerApp(tk.Tk):
                     size = os.path.getsize(target_path) if show_dir_sizes else "-"
                 except Exception:
                     size = 0 if show_dir_sizes else "-"
-                entry = {
+                entry: dict[str, object] = {
                     "name": os.path.basename(target_path),
                     "path": target_path,
                     "is_dir": False,
@@ -673,10 +686,10 @@ class DiskCleanerApp(tk.Tk):
         # Add result to queue
         queue.put(("result", entries))
 
-    def _poll_queue(self):
+    def _poll_queue(self) -> None:
         """Poll the queue for updates from the background process."""
         # Check if the queue exists
-        if not hasattr(self, "_queue"):
+        if not hasattr(self, "_queue") or self._queue is None:
             return
 
         # Try to get a message from the queue
@@ -700,7 +713,7 @@ class DiskCleanerApp(tk.Tk):
         except Exception:
             self.after(100, self._poll_queue)
 
-    def _update_dir_view_ui(self, entries):
+    def _update_dir_view_ui(self, entries: list[dict[str, object]]) -> None:
         """Update the directory view UI with the given entries."""
         # Update the Treeview with the given entries
         self.dir_entries = entries
@@ -716,7 +729,7 @@ class DiskCleanerApp(tk.Tk):
             self.tree.insert(
                 "",
                 "end",
-                iid=entry["path"],
+                iid=str(entry["path"]),
                 text=display_name,
                 values=(display_size,),
                 tags=(tag,),
@@ -734,7 +747,7 @@ class DiskCleanerApp(tk.Tk):
         # Reset loading state
         self.loading = False
 
-    def on_toggle_dir_sizes(self):
+    def on_toggle_dir_sizes(self) -> None:
         """Handle toggling of the Show directory sizes checkbox."""
         # If loading, terminate the current process to cancel loading
         if getattr(self, "loading", False):
@@ -757,7 +770,7 @@ class DiskCleanerApp(tk.Tk):
         else:
             self.refresh_list_view_by_child_items()
 
-    def on_tree_heading_click(self, column):
+    def on_tree_heading_click(self, column: str) -> None:
         """Handle clicking on a column header to sort the list."""
         # Determine sort order
         if self.sort_column == column:
@@ -770,7 +783,7 @@ class DiskCleanerApp(tk.Tk):
         if column == "name":
             entries = sorted(
                 self.dir_entries,
-                key=lambda e: e["name"].lower(),
+                key=lambda e: str(e["name"]).lower(),
                 reverse=self.sort_reverse,
             )
         elif column == "size":
@@ -785,21 +798,23 @@ class DiskCleanerApp(tk.Tk):
         # Update UI
         self._update_dir_view_ui(entries)
 
-    def on_tree_double_click(self, event):
+    def on_tree_double_click(self, event: tk.Event) -> None:
         """Handle double-clicking on an item in the list to navigate into a directory."""
         # Get selected item
         item_id = self.tree.focus()
         if not item_id:
             return
-        entry = next((e for e in self.dir_entries if e["path"] == item_id), None)
+        entry = next(
+            (e for e in self.dir_entries if str(e["path"]) == str(item_id)), None
+        )
 
         # If it's a directory, navigate into it
         if entry and entry["is_dir"]:
-            self.selected_dir_path = entry["path"]
+            self.selected_dir_path = str(entry["path"])
             self.refresh_list_view_by_child_items()
             self.update_breadcrumbs()
 
-    def on_delete(self):
+    def on_delete(self) -> None:
         """Handle deletion of selected items."""
         # Get selected items
         selected = self.tree.selection()
@@ -815,12 +830,12 @@ class DiskCleanerApp(tk.Tk):
             return
 
         # Delete selected items
-        delete_items(selected)
+        delete_items([str(s) for s in selected])
 
         # Refresh the list view
         self.refresh_list_view_by_child_items()
 
-    def update_breadcrumbs(self):
+    def update_breadcrumbs(self) -> None:
         """Update the breadcrumb navigation display."""
         # Clear existing widgets
         for widget in self.breadcrumb_inner_frame.winfo_children():
@@ -856,7 +871,9 @@ class DiskCleanerApp(tk.Tk):
         path = self.selected_dir_path
         matched_target_dir = ""
         target_dir_paths = load_target_directories(
-            "mac" if is_mac() else "windows" if is_windows() else "other"
+            Platform.MAC
+            if is_mac()
+            else Platform.WINDOWS if is_windows() else Platform.OTHER
         )
         for target_dir_path in target_dir_paths:
             if path == target_dir_path or path.startswith(target_dir_path + os.sep):
@@ -873,11 +890,11 @@ class DiskCleanerApp(tk.Tk):
                     parts.insert(1, (head, head))
                 break
 
-        def shorten_path(p):
+        def shorten_path(p: str) -> str:
             """Shorten the path by replacing home directory with "~"."""
-            if p.startswith(home_dir):
+            if isinstance(p, str) and p.startswith(home_dir):
                 return p.replace(home_dir, "~", 1)
-            return p
+            return str(p)
 
         # Create buttons/labels for each part
         # - Last part is a label, others are buttons
@@ -892,11 +909,17 @@ class DiskCleanerApp(tk.Tk):
                 )
                 lbl.pack(side="left")
             else:
+
+                from typing import Callable
+
+                def make_callback(p: str) -> Callable[[], None]:
+                    return lambda: self.on_breadcrumb_click(p)
+
                 btn = tk.Button(
                     self.breadcrumb_inner_frame,
                     text=display_name,
                     relief=tk.FLAT,
-                    command=lambda p=full_path: self.on_breadcrumb_click(p),
+                    command=make_callback(full_path),
                 )
                 btn.pack(side="left")
 
@@ -911,13 +934,13 @@ class DiskCleanerApp(tk.Tk):
             scrollregion=self.breadcrumb_canvas.bbox("all")
         )
 
-    def on_breadcrumb_click(self, path):
+    def on_breadcrumb_click(self, path: str) -> None:
         """Handle clicking on a breadcrumb item to navigate."""
         if not path:
             self.refresh_list_view_by_target_dirs()
             self.update_breadcrumbs()
         elif path != self.selected_dir_path:
-            self.selected_dir_path = path
+            self.selected_dir_path = str(path)
             self.refresh_list_view_by_child_items()
             self.update_breadcrumbs()
 
