@@ -212,7 +212,9 @@ def get_directory_size(
         c = conn.cursor()
         c.execute("SELECT size, mtime FROM directory_size_cache WHERE path=?", (path,))
         row = c.fetchone()
-        if row and row[1] == mtime:
+        # Disable mtime check for now (because cache is frequently invalidated)
+        # if row and row[1] == mtime:
+        if row:
             size = row[0]
         conn.close()
     except Exception:
@@ -620,9 +622,12 @@ class DiskCleanerApp(tk.Tk):
                 os.path.join(target_path, c) for c in os.listdir(target_path)
             ]
             sets_name_to_path = False
-        else:
+        elif isinstance(target_or_targets, list):
             target_paths = target_or_targets
             sets_name_to_path = True
+        else:
+            target_paths = []
+            sets_name_to_path = False
 
         # List entries
         entries: list[dict[str, object]] = []
