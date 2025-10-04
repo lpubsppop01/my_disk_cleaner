@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import enum
 import multiprocessing
 import os
@@ -7,6 +9,7 @@ import sys
 import tkinter as tk
 import tkinter.font
 from tkinter import messagebox, ttk
+from typing import Any
 
 
 def get_admin_db_path() -> str:
@@ -77,7 +80,7 @@ def save_target_directories(platform: Platform, dirs: list[str]) -> None:
     c.execute("DELETE FROM target_directories WHERE platform=?", (platform,))
     for dir_path in dirs:
         c.execute(
-            "INSERT INTO target_directories (platform, dir) VALUES (?, ?)",
+            "INSERT INTO target_directories (platform, path) VALUES (?, ?)",
             (platform, dir_path),
         )
     conn.commit()
@@ -678,7 +681,7 @@ class DiskCleanerApp(tk.Tk):
 
         # Try to get a message from the queue
         try:
-            msg = self._queue.get_nowait()
+            msg: Any = self._queue.get_nowait()
             if isinstance(msg, tuple) and msg[0] == "progress":
                 # Update status text with progress
                 dir_path = msg[1]
